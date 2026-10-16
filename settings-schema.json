@@ -20,7 +20,7 @@
         "general-lang-search": {
             "type": "section",
             "title": "Language & Search Button / Idioma e Botão de Pesquisa",
-            "keys": ["language", "show-search-button", "search-button-style"]
+            "keys": ["language", "show-search-button", "search-button-style", "search-button-size-mode", "search-pill-height"]
         },
         "general-behavior": {
             "type": "section",
@@ -30,7 +30,7 @@
         "appearance-panel": {
             "type": "section",
             "title": "Panel Icon / Ícone do Painel",
-            "keys": ["menu-custom", "menu-icon", "menu-icon-size", "menu-label"]
+            "keys": ["menu-custom", "menu-icon", "menu-icon-size-mode", "menu-icon-size", "menu-label"]
         },
         "appearance-menu": {
             "type": "section",
@@ -71,6 +71,26 @@
             "Windows 11 Recording Style (Icon + Text) / Igual às gravações do Windows (Ícone + Texto)": "pill",
             "Magnifying glass only / Só uma lupa": "icon"
         }
+    },
+    "search-button-size-mode": {
+        "type": "combobox",
+        "default": "auto",
+        "description": "Search button size / Tamanho do botão de pesquisa",
+        "dependency": "show-search-button",
+        "options": {
+            "Automatic (adapt to panel height) / Automático (ajustar à barra de tarefas)": "auto",
+            "Custom height / Altura personalizada": "custom"
+        }
+    },
+    "search-pill-height": {
+        "type": "spinbutton",
+        "default": 30,
+        "min": 20,
+        "max": 64,
+        "step": 1,
+        "units": "px",
+        "description": "Custom search button height / Altura personalizada do botão",
+        "dependency": "search-button-size-mode=custom"
     },
     "overlay-key": {
         "type": "keybinding",
@@ -117,15 +137,25 @@
         ],
         "dependency": "menu-custom"
     },
+    "menu-icon-size-mode": {
+        "type": "combobox",
+        "default": "auto",
+        "description": "Menu icon size / Tamanho do ícone do menu",
+        "dependency": "menu-custom",
+        "options": {
+            "Automatic (adapt to panel height) / Automático (ajustar à barra de tarefas)": "auto",
+            "Custom size / Personalizado": "custom"
+        }
+    },
     "menu-icon-size": {
         "type": "spinbutton",
-        "default": 24,
+        "default": 32,
         "min": 16,
         "max": 96,
         "step": 1,
         "units": "px",
-        "description": "Icon size / Tamanho do ícone",
-        "dependency": "menu-custom"
+        "description": "Custom icon size / Tamanho personalizado do ícone",
+        "dependency": "menu-icon-size-mode=custom"
     },
     "menu-label": {
         "type": "entry",

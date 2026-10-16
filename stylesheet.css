@@ -7,40 +7,69 @@
 .win11-applet-container {
     padding: 0;
     margin: 0;
-    spacing: 4px;
-    background-color: transparent;
-    border: none;
-    box-shadow: none;
+    spacing: 3px;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
 }
 
 .win11-applet-container:hover,
 .win11-applet-container:checked,
 .win11-applet-container:active {
-    background-color: transparent;
-    border: none;
-    box-shadow: none;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
 }
 
+/* Individual Start Button (Exact taskbar window button hover & active feel) */
 .win11-start-button {
-    padding: 0 7px;
-    spacing: 5px;
+    padding: 0 8px;
+    margin: 2px 1px;
+    spacing: 4px;
     border-radius: 4px;
-    transition-duration: 120ms;
+    border: 1px solid transparent;
+    background-color: transparent;
+    transition-duration: 100ms;
 }
 
+.win11-start-button.grouped-window-list-item-box {
+    border-bottom: none !important;
+    border-top: none !important;
+    border-left: none !important;
+    border-right: none !important;
+}
+
+.win11-start-button:hover {
+    background-color: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.05);
+}
+
+.win11-start-button:active,
+.win11-start-button:checked {
+    background-color: rgba(255, 255, 255, 0.20);
+    border-color: rgba(255, 255, 255, 0.10);
+}
+
+/* Taskbar Search Button - Windows 11 Pill Style (Vertically centered) */
 .win11-search-panel-pill {
-    margin: 4px 2px;
-    padding: 0 12px;
+    margin: 0 3px;
+    padding: 0 14px;
     spacing: 7px;
     border-radius: 999px;
-    background-color: rgba(140, 140, 150, 0.18);
+    background-color: rgba(140, 140, 150, 0.16);
     border: 1px solid rgba(255, 255, 255, 0.10);
-    transition-duration: 150ms;
+    transition-duration: 120ms;
 }
 
 .win11-search-panel-pill:hover {
     background-color: rgba(160, 160, 175, 0.28);
-    border-color: rgba(255, 255, 255, 0.18);
+    border-color: rgba(255, 255, 255, 0.22);
+}
+
+.win11-search-panel-pill:active,
+.win11-search-panel-pill:checked {
+    background-color: rgba(160, 160, 175, 0.40);
+    border-color: rgba(255, 255, 255, 0.32);
 }
 
 .win11-search-panel-pill-label {
@@ -49,10 +78,33 @@
     padding-right: 2px;
 }
 
+/* Taskbar Search Button - Minimalist Icon Style */
 .win11-search-panel-icon-btn {
-    padding: 0 7px;
+    padding: 0 8px;
+    margin: 2px 1px;
+    spacing: 4px;
     border-radius: 4px;
-    transition-duration: 120ms;
+    border: 1px solid transparent;
+    background-color: transparent;
+    transition-duration: 100ms;
+}
+
+.win11-search-panel-icon-btn.grouped-window-list-item-box {
+    border-bottom: none !important;
+    border-top: none !important;
+    border-left: none !important;
+    border-right: none !important;
+}
+
+.win11-search-panel-icon-btn:hover {
+    background-color: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.05);
+}
+
+.win11-search-panel-icon-btn:active,
+.win11-search-panel-icon-btn:checked {
+    background-color: rgba(255, 255, 255, 0.20);
+    border-color: rgba(255, 255, 255, 0.10);
 }
 
 /* Main Popup Container */

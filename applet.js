@@ -547,10 +547,11 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this.actor.set_style_class_name('applet-box win11-applet-container');
 
         this.startButtonBox = new St.BoxLayout({
-            style_class: 'applet-box win11-start-button',
+            style_class: 'win11-start-button grouped-window-list-item-box',
             reactive: true,
             track_hover: true,
-            y_align: Clutter.ActorAlign.FILL
+            y_align: Clutter.ActorAlign.FILL,
+            y_expand: true
         });
 
         // Move IconApplet's icon box and TextIconApplet's label bin into startButtonBox
@@ -558,7 +559,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this.actor.remove_actor(this._layoutBin);
         this.startButtonBox.add(this._applet_icon_box, { y_align: St.Align.MIDDLE, y_fill: false });
         this.startButtonBox.add(this._layoutBin, { y_align: St.Align.MIDDLE, y_fill: false });
-        this.actor.add(this.startButtonBox, { y_align: St.Align.FILL, y_fill: true });
+        this.actor.add(this.startButtonBox, { y_align: St.Align.MIDDLE, y_fill: true });
 
         // Build Taskbar Search Button
         this.searchPanelButton = new St.BoxLayout({
@@ -571,7 +572,8 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             icon_name: 'xsi-edit-find',
             icon_type: St.IconType.SYMBOLIC,
             icon_size: 16,
-            style_class: 'system-status-icon'
+            style_class: 'system-status-icon',
+            y_align: Clutter.ActorAlign.CENTER
         });
         this.searchPanelLabel = new St.Label({
             text: "Search",
@@ -580,14 +582,21 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         });
         this.searchPanelButton.add(this.searchPanelIcon, { y_align: St.Align.MIDDLE, y_fill: false });
         this.searchPanelButton.add(this.searchPanelLabel, { y_align: St.Align.MIDDLE, y_fill: false });
-        this.actor.add(this.searchPanelButton, { y_align: St.Align.FILL, y_fill: false });
+        this.actor.add(this.searchPanelButton, { y_align: St.Align.MIDDLE, y_fill: false });
 
-        // Update panel tooltip dynamically based on which button is hovered
-        this.startButtonBox.connect('enter-event', () => {
-            this.set_applet_tooltip(this.t('start'));
+        // Individualized hover feedback & tooltip for each button
+        this.startButtonBox.connect('notify::hover', () => {
+            if (this.startButtonBox.hover) {
+                this.set_applet_tooltip(this.t('start'));
+            }
         });
-        this.searchPanelButton.connect('enter-event', () => {
-            this.set_applet_tooltip(this.t('search'));
+        this.searchPanelButton.connect('notify::hover', () => {
+            if (this.searchPanelButton.hover) {
+                this.set_applet_tooltip(this.t('search'));
+            }
+        });
+        this.actor.connect('leave-event', () => {
+            this.set_applet_tooltip("");
         });
 
         // Settings
@@ -596,10 +605,13 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this.settings.bind("language", "language", () => this._onLanguageChanged());
         this.settings.bind("show-search-button", "showSearchButton", () => this._updateSearchPanelButton());
         this.settings.bind("search-button-style", "searchButtonStyle", () => this._updateSearchPanelButton());
+        this.settings.bind("search-button-size-mode", "searchButtonSizeMode", () => this._updateSearchPanelButton());
+        this.settings.bind("search-pill-height", "searchPillHeight", () => this._updateSearchPanelButton());
 
         this.settings.bind("overlay-key", "overlayKey", () => this._updateKeybinding());
         this.settings.bind("menu-custom", "menuCustom", () => this._updateIconAndLabel());
         this.settings.bind("menu-icon", "menuIcon", () => this._updateIconAndLabel());
+        this.settings.bind("menu-icon-size-mode", "menuIconSizeMode", () => this._updateIconAndLabel());
         this.settings.bind("menu-icon-size", "menuIconSize", () => this._updateIconAndLabel());
         this.settings.bind("menu-label", "menuLabel", () => this._updateIconAndLabel());
 
@@ -764,9 +776,22 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this.searchPanelButton.show();
         this.searchPanelLabel.set_text(this.t("search"));
 
+        let ph = this._panelHeight || (this.panel ? this.panel.height : 40);
+
         if (this.searchButtonStyle === "icon") {
-            this.searchPanelButton.set_style_class_name('applet-box win11-search-panel-icon-btn');
+            this.searchPanelButton.set_style_class_name('win11-search-panel-icon-btn grouped-window-list-item-box');
             this.searchPanelLabel.hide();
+            this.searchPanelButton.set_height(-1);
+            this.searchPanelButton.set_y_align(Clutter.ActorAlign.FILL);
+
+            let iconSize;
+            if (this.menuIconSizeMode === "custom") {
+                iconSize = Math.min(this.menuIconSize || 32, ph);
+            } else {
+                iconSize = Math.max(16, Math.min(ph - 6, Math.round(ph * 0.8)));
+            }
+            this.searchPanelIcon.set_icon_size(iconSize);
+            this.searchPanelIcon.set_style(`icon-size: ${iconSize}px; width: ${iconSize}px; height: ${iconSize}px;`);
         } else {
             this.searchPanelButton.set_style_class_name('win11-search-panel-pill');
             if (this._orientation === St.Side.LEFT || this._orientation === St.Side.RIGHT) {
@@ -774,6 +799,21 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             } else {
                 this.searchPanelLabel.show();
             }
+
+            let pillH;
+            if (this.searchButtonSizeMode === "custom") {
+                pillH = Math.max(20, Math.min(ph, this.searchPillHeight || 30));
+            } else {
+                // Auto: scale to ~75% of panel height (e.g. 30px on 40px panel)
+                pillH = Math.max(24, Math.min(ph - 6, Math.round(ph * 0.75)));
+            }
+
+            this.searchPanelButton.set_height(pillH);
+            this.searchPanelButton.set_y_align(Clutter.ActorAlign.CENTER);
+
+            let searchIconSize = Math.max(14, Math.min(pillH - 8, Math.round(pillH * 0.54)));
+            this.searchPanelIcon.set_icon_size(searchIconSize);
+            this.searchPanelIcon.set_style(`icon-size: ${searchIconSize}px; width: ${searchIconSize}px; height: ${searchIconSize}px;`);
         }
         this._updatePanelButtonsActiveState();
     }
@@ -849,11 +889,13 @@ class Win11MenuApplet extends Applet.TextIconApplet {
     _setStyle() {
         let icon_type = this._applet_icon.get_icon_type();
         let size;
+        let ph = this._panelHeight || (this.panel ? this.panel.height : 40);
 
-        if (this.menuCustom) {
-            size = Math.min(this.menuIconSize, this.panel ? this.panel.height : 32);
+        if (this.menuIconSizeMode === "custom") {
+            size = Math.min(this.menuIconSize || 32, ph);
         } else {
-            size = this.getPanelIconSize(icon_type);
+            // Auto size: scale proportionally to panel height (~80% of panel height, e.g. 32px on 40px panel)
+            size = Math.max(16, Math.min(ph - 6, Math.round(ph * 0.8)));
         }
 
         if (icon_type === St.IconType.FULLCOLOR) {
@@ -863,10 +905,22 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         }
 
         this._applet_icon.set_icon_size(size);
+        this._applet_icon.set_style(`icon-size: ${size}px; width: ${size}px; height: ${size}px;`);
+        if (this._applet_icon_box) {
+            this._applet_icon_box.set_style(`width: ${size}px; height: ${size}px;`);
+        }
+    }
+
+    on_panel_height_changed() {
+        this._setStyle();
+        this._updateIconAndLabel();
+        this._updateSearchPanelButton();
     }
 
     on_panel_icon_size_changed() {
+        this._setStyle();
         this._updateIconAndLabel();
+        this._updateSearchPanelButton();
     }
 
     on_orientation_changed(orientation) {
