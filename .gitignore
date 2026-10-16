@@ -1,0 +1,16 @@
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Editor temporary files
+*~
+*.swp
+*.swo
+
+# Byte-compiled / cache files
+__pycache__/
+*.pyc
+
+# Local backup files
+*.bak
+*.orig

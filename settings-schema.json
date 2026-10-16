@@ -1,0 +1,264 @@
+{
+    "layout1": {
+        "type": "layout",
+        "pages": ["general", "appearance", "content"],
+        "general": {
+            "type": "page",
+            "title": "General / Geral",
+            "sections": ["general-lang-search", "general-behavior"]
+        },
+        "appearance": {
+            "type": "page",
+            "title": "Appearance / Aparência",
+            "sections": ["appearance-panel", "appearance-menu"]
+        },
+        "content": {
+            "type": "page",
+            "title": "Content / Conteúdo",
+            "sections": ["content-sections", "content-places"]
+        },
+        "general-lang-search": {
+            "type": "section",
+            "title": "Language & Search Button / Idioma e Botão de Pesquisa",
+            "keys": ["language", "show-search-button", "search-button-style"]
+        },
+        "general-behavior": {
+            "type": "section",
+            "title": "Behavior / Comportamento",
+            "keys": ["overlay-key", "activate-on-hover", "hover-delay", "enable-animation", "enable-autoscroll"]
+        },
+        "appearance-panel": {
+            "type": "section",
+            "title": "Panel Icon / Ícone do Painel",
+            "keys": ["menu-custom", "menu-icon", "menu-icon-size", "menu-label"]
+        },
+        "appearance-menu": {
+            "type": "section",
+            "title": "Menu Options / Opções do Menu",
+            "keys": ["application-icon-size", "show-description", "reset-menu-size-button", "reset-pinned-button"]
+        },
+        "content-sections": {
+            "type": "section",
+            "title": "Menu Content / Conteúdo do Menu",
+            "keys": ["show-avatar", "show-recents", "menu-editor-button"]
+        },
+        "content-places": {
+            "type": "section",
+            "title": "Footer Quick Places / Atalhos na Barra Inferior",
+            "keys": ["show-files", "show-settings", "show-downloads", "show-documents", "show-pictures", "show-music", "show-videos", "show-home"]
+        }
+    },
+    "language": {
+        "type": "combobox",
+        "default": "en",
+        "description": "Language / Língua",
+        "options": {
+            "English (Default)": "en",
+            "Português (Brasil) - PT-BR": "ptbr"
+        }
+    },
+    "show-search-button": {
+        "type": "switch",
+        "default": true,
+        "description": "Show search button on taskbar / Mostrar botão de pesquisa na barra de tarefas"
+    },
+    "search-button-style": {
+        "type": "combobox",
+        "default": "pill",
+        "description": "Search button style / Estilo do botão de pesquisa",
+        "dependency": "show-search-button",
+        "options": {
+            "Windows 11 Recording Style (Icon + Text) / Igual às gravações do Windows (Ícone + Texto)": "pill",
+            "Magnifying glass only / Só uma lupa": "icon"
+        }
+    },
+    "overlay-key": {
+        "type": "keybinding",
+        "description": "Keyboard shortcut to open and close the menu / Atalho de teclado para abrir e fechar o menu",
+        "default": "Super_L::Super_R"
+    },
+    "menu-custom": {
+        "type": "switch",
+        "default": true,
+        "description": "Use a custom icon and label / Usar ícone e texto personalizados"
+    },
+    "menu-icon": {
+        "type": "iconfilechooser",
+        "default": "linuxmint-logo-ring-symbolic",
+        "description": "Menu Icon (Linux Mint) / Ícone do Menu",
+        "default_icon": "linuxmint-logo-ring-symbolic",
+        "default_category": "Linux Mint",
+        "icon_categories": [
+            {
+                "name": "Linux Mint",
+                "icons": [
+                    "linuxmint-logo",
+                    "linuxmint-logo-badge",
+                    "linuxmint-logo-badge-symbolic",
+                    "linuxmint-logo-filled-badge",
+                    "linuxmint-logo-filled-leaf-badge",
+                    "linuxmint-logo-filled-leaf",
+                    "linuxmint-logo-filled-ring",
+                    "linuxmint-logo-leaf-badge",
+                    "linuxmint-logo-leaf-badge-symbolic",
+                    "linuxmint-logo-leaf",
+                    "linuxmint-logo-leaf-symbolic",
+                    "linuxmint-logo-neon",
+                    "linuxmint-logo-ring",
+                    "linuxmint-logo-ring-symbolic",
+                    "linuxmint-logo-simple",
+                    "linuxmint-logo-simple-symbolic",
+                    "cinnamon-symbolic",
+                    "emblem-favorite-symbolic",
+                    "user-bookmarks-symbolic",
+                    "start-here-symbolic"
+                ]
+            }
+        ],
+        "dependency": "menu-custom"
+    },
+    "menu-icon-size": {
+        "type": "spinbutton",
+        "default": 24,
+        "min": 16,
+        "max": 96,
+        "step": 1,
+        "units": "px",
+        "description": "Icon size / Tamanho do ícone",
+        "dependency": "menu-custom"
+    },
+    "menu-label": {
+        "type": "entry",
+        "default": "",
+        "description": "Panel Text / Texto no painel",
+        "dependency": "menu-custom"
+    },
+    "application-icon-size": {
+        "type": "spinbutton",
+        "default": 32,
+        "min": 20,
+        "max": 48,
+        "step": 2,
+        "units": "px",
+        "description": "Applications icon size / Tamanho dos ícones de aplicativos"
+    },
+    "show-avatar": {
+        "type": "switch",
+        "default": true,
+        "description": "Show user avatar and name / Mostrar avatar e nome do usuário"
+    },
+    "show-recents": {
+        "type": "switch",
+        "default": true,
+        "description": "Show Recent section / Mostrar seção Recente"
+    },
+    "show-description": {
+        "type": "switch",
+        "default": true,
+        "description": "Show application descriptions in search / Mostrar descrições na pesquisa"
+    },
+    "show-files": {
+        "type": "switch",
+        "default": true,
+        "description": "File Explorer / Explorador de Arquivos"
+    },
+    "show-settings": {
+        "type": "switch",
+        "default": true,
+        "description": "System Settings / Configurações do Sistema"
+    },
+    "show-downloads": {
+        "type": "switch",
+        "default": true,
+        "description": "Downloads"
+    },
+    "show-documents": {
+        "type": "switch",
+        "default": true,
+        "description": "Documents / Documentos"
+    },
+    "show-pictures": {
+        "type": "switch",
+        "default": true,
+        "description": "Pictures / Imagens"
+    },
+    "show-music": {
+        "type": "switch",
+        "default": false,
+        "description": "Music / Música"
+    },
+    "show-videos": {
+        "type": "switch",
+        "default": false,
+        "description": "Videos / Vídeos"
+    },
+    "show-home": {
+        "type": "switch",
+        "default": true,
+        "description": "Personal folder (Home) / Pasta pessoal"
+    },
+    "enable-autoscroll": {
+        "type": "switch",
+        "default": true,
+        "description": "Enable autoscrolling in application list / Rolagem automática na lista"
+    },
+    "activate-on-hover": {
+        "type": "switch",
+        "default": false,
+        "description": "Open the menu when I move my mouse over it / Abrir ao passar o mouse"
+    },
+    "hover-delay": {
+        "type": "spinbutton",
+        "default": 0,
+        "min": 0,
+        "max": 1000,
+        "step": 50,
+        "units": "milliseconds",
+        "dependency": "activate-on-hover",
+        "description": "Menu hover delay / Atraso ao passar o mouse"
+    },
+    "enable-animation": {
+        "type": "switch",
+        "default": true,
+        "description": "Use menu animations / Usar animações no menu"
+    },
+    "menu-editor-button": {
+        "type": "button",
+        "description": "Open the menu editor / Abrir editor do menu",
+        "callback": "_launch_editor"
+    },
+    "reset-menu-size-button": {
+        "type": "button",
+        "description": "Restore the menu to its original size / Restaurar tamanho original do menu",
+        "callback": "_reset_menu_size"
+    },
+    "reset-pinned-button": {
+        "type": "button",
+        "description": "Reset pinned apps to default / Restaurar aplicativos fixados padrão",
+        "callback": "_reset_pinned_apps"
+    },
+    "popup-width": {
+        "type": "generic",
+        "default": 680
+    },
+    "popup-height": {
+        "type": "generic",
+        "default": 720
+    },
+    "pinned-items": {
+        "type": "generic",
+        "default": []
+    },
+    "pinned-expanded": {
+        "type": "generic",
+        "default": true
+    },
+    "all-apps-view-mode": {
+        "type": "generic",
+        "default": "list"
+    },
+    "recent-apps": {
+        "type": "generic",
+        "default": []
+    }
+}

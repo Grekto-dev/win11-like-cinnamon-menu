@@ -1,0 +1,575 @@
+/* =========================================================================
+ * Windows 11 Menu & Search Applet for Cinnamon
+ * Follows Windows 11 layout & geometry while inheriting Cinnamon theme colors
+ * ========================================================================= */
+
+/* Panel Container & Buttons */
+.win11-applet-container {
+    padding: 0;
+    margin: 0;
+    spacing: 4px;
+    background-color: transparent;
+    border: none;
+    box-shadow: none;
+}
+
+.win11-applet-container:hover,
+.win11-applet-container:checked,
+.win11-applet-container:active {
+    background-color: transparent;
+    border: none;
+    box-shadow: none;
+}
+
+.win11-start-button {
+    padding: 0 7px;
+    spacing: 5px;
+    border-radius: 4px;
+    transition-duration: 120ms;
+}
+
+.win11-search-panel-pill {
+    margin: 4px 2px;
+    padding: 0 12px;
+    spacing: 7px;
+    border-radius: 999px;
+    background-color: rgba(140, 140, 150, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    transition-duration: 150ms;
+}
+
+.win11-search-panel-pill:hover {
+    background-color: rgba(160, 160, 175, 0.28);
+    border-color: rgba(255, 255, 255, 0.18);
+}
+
+.win11-search-panel-pill-label {
+    font-size: 9.5pt;
+    font-weight: 500;
+    padding-right: 2px;
+}
+
+.win11-search-panel-icon-btn {
+    padding: 0 7px;
+    border-radius: 4px;
+    transition-duration: 120ms;
+}
+
+/* Main Popup Container */
+.win11-menu-main-box {
+    padding: 0;
+    spacing: 0;
+}
+
+/* Top Search Bar (shared between Start and Search modes) */
+.win11-top-search-box {
+    padding: 20px 26px 12px 26px;
+    spacing: 10px;
+}
+
+#appmenu-search-entry.win11-search-entry {
+    border-radius: 999px;
+    padding: 8px 16px;
+    min-height: 22px;
+    font-size: 10pt;
+    transition-duration: 150ms;
+}
+
+.win11-search-entry-icon {
+    icon-size: 16px;
+    padding: 0 4px;
+}
+
+/* Main Scrollable Content Area */
+.win11-main-scrollview {
+    padding: 0;
+}
+
+.win11-start-scroll-content {
+    padding: 6px 26px 18px 26px;
+    spacing: 18px;
+}
+
+/* Section Headers (Pinned / Fixado, Recent / Recente, All / Todos) */
+.win11-section-box {
+    spacing: 8px;
+}
+
+.win11-section-header {
+    padding: 4px 8px;
+}
+
+.win11-section-title {
+    font-size: 10.5pt;
+    font-weight: bold;
+}
+
+.win11-section-action-btn {
+    padding: 4px 10px;
+    spacing: 6px;
+    border-radius: 6px;
+    background-color: rgba(140, 140, 150, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    font-size: 9pt;
+    transition-duration: 120ms;
+}
+
+.win11-section-action-btn:hover {
+    background-color: rgba(140, 140, 150, 0.24);
+    border-color: rgba(255, 255, 255, 0.14);
+}
+
+/* Pinned Apps Grid (8 columns) */
+.win11-pinned-grid-wrapper {
+    padding: 2px 0;
+}
+
+.win11-pinned-tile {
+    padding: 6px 4px 4px 4px;
+    spacing: 5px;
+    border-radius: 6px;
+    transition-duration: 120ms;
+}
+
+.win11-pinned-tile:hover,
+.win11-pinned-tile-selected {
+    background-color: rgba(150, 150, 165, 0.16);
+}
+
+.win11-pinned-tile-folder-target {
+    background-color: rgba(150, 150, 165, 0.30);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 10px;
+}
+
+.win11-pinned-tile-label {
+    font-size: 8.5pt;
+    text-align: center;
+}
+
+/* Folder 2x2 Mini Preview Icon inside Pinned Grid */
+.win11-folder-mini-preview {
+    width: 38px;
+    height: 38px;
+    padding: 4px;
+    border-radius: 8px;
+    background-color: rgba(150, 150, 165, 0.22);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.win11-folder-mini-row {
+    spacing: 3px;
+}
+
+/* Expanded Folder Overlay / Modal inside Start Menu */
+.win11-folder-overlay {
+    background-color: rgba(0, 0, 0, 0.42);
+    padding: 28px;
+}
+
+.win11-folder-card {
+    padding: 20px 24px 24px 24px;
+    spacing: 14px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.win11-folder-header {
+    padding: 2px 4px;
+    spacing: 8px;
+}
+
+.win11-folder-title-btn {
+    padding: 6px 12px;
+    border-radius: 6px;
+    spacing: 8px;
+    transition-duration: 120ms;
+}
+
+.win11-folder-title-btn:hover {
+    background-color: rgba(150, 150, 165, 0.18);
+}
+
+.win11-folder-title-label {
+    font-size: 13pt;
+    font-weight: bold;
+    text-align: center;
+}
+
+#appmenu-search-entry.win11-folder-title-entry {
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 12pt;
+    font-weight: bold;
+    width: 240px;
+}
+
+/* Recent Section (2 columns x 3 rows in main view, or full list in subview) */
+.win11-recent-grid {
+    spacing: 6px;
+}
+
+.win11-recent-row {
+    spacing: 12px;
+}
+
+.win11-recent-item {
+    padding: 7px 10px;
+    spacing: 12px;
+    border-radius: 6px;
+    transition-duration: 120ms;
+}
+
+.win11-recent-item:hover,
+.win11-recent-item-selected {
+    background-color: rgba(150, 150, 165, 0.16);
+}
+
+.win11-recent-item-title {
+    font-size: 9.5pt;
+    font-weight: 500;
+}
+
+.win11-recent-item-subtitle {
+    font-size: 8pt;
+    opacity: 0.68;
+}
+
+.win11-recent-time-label {
+    font-size: 8pt;
+    opacity: 0.65;
+    padding-left: 8px;
+}
+
+/* All Apps Section (Todos / All) */
+.win11-all-apps-box {
+    spacing: 2px;
+}
+
+.win11-all-apps-letter-btn {
+    padding: 7px 12px;
+    margin-top: 4px;
+    border-radius: 6px;
+    font-size: 9.5pt;
+    font-weight: bold;
+    transition-duration: 120ms;
+}
+
+.win11-all-apps-letter-btn:hover {
+    background-color: rgba(150, 150, 165, 0.16);
+}
+
+.win11-all-apps-item {
+    padding: 6px 12px;
+    spacing: 12px;
+    border-radius: 6px;
+    transition-duration: 120ms;
+}
+
+.win11-all-apps-item:hover,
+.win11-all-apps-item-selected {
+    background-color: rgba(150, 150, 165, 0.16);
+}
+
+.win11-all-apps-item-label {
+    font-size: 9.5pt;
+}
+
+.win11-new-badge {
+    font-size: 8pt;
+    font-weight: bold;
+    opacity: 0.8;
+}
+
+/* Alphabet Jumper Grid */
+.win11-alphabet-jumper {
+    padding: 16px 24px;
+    spacing: 8px;
+}
+
+.win11-alphabet-row {
+    spacing: 8px;
+}
+
+.win11-alphabet-cell {
+    width: 40px;
+    height: 40px;
+    border-radius: 6px;
+    font-size: 10.5pt;
+    font-weight: bold;
+    text-align: center;
+    background-color: rgba(150, 150, 165, 0.12);
+    transition-duration: 120ms;
+}
+
+.win11-alphabet-cell:hover {
+    background-color: rgba(150, 150, 165, 0.28);
+}
+
+.win11-alphabet-cell-disabled {
+    width: 40px;
+    height: 40px;
+    border-radius: 6px;
+    font-size: 10.5pt;
+    opacity: 0.3;
+    text-align: center;
+}
+
+/* Search Home View (2 Columns: Left = Recent, Right = Quick Searches & Top Apps) */
+.win11-search-home-box {
+    padding: 8px 26px 20px 26px;
+    spacing: 22px;
+}
+
+.win11-search-left-col {
+    width: 245px;
+    spacing: 8px;
+}
+
+.win11-search-right-col {
+    spacing: 18px;
+}
+
+.win11-search-col-title {
+    font-size: 10pt;
+    font-weight: bold;
+    padding: 4px 6px;
+}
+
+.win11-search-recent-list {
+    spacing: 2px;
+}
+
+.win11-search-recent-row {
+    padding: 7px 10px;
+    spacing: 10px;
+    border-radius: 6px;
+    transition-duration: 120ms;
+}
+
+.win11-search-recent-row:hover {
+    background-color: rgba(150, 150, 165, 0.16);
+}
+
+.win11-search-recent-label {
+    font-size: 9.5pt;
+}
+
+/* Quick Searches Pills */
+.win11-quick-searches-box {
+    spacing: 8px;
+}
+
+.win11-quick-searches-row {
+    spacing: 8px;
+}
+
+.win11-quick-search-chip {
+    padding: 7px 14px;
+    border-radius: 999px;
+    background-color: rgba(150, 150, 165, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 9pt;
+    transition-duration: 120ms;
+}
+
+.win11-quick-search-chip:hover {
+    background-color: rgba(150, 150, 165, 0.28);
+    border-color: rgba(255, 255, 255, 0.18);
+}
+
+/* Top Apps 3x2 Cards in Search Home */
+.win11-top-apps-grid {
+    spacing: 8px;
+}
+
+.win11-top-apps-row {
+    spacing: 8px;
+}
+
+.win11-top-app-card {
+    width: 112px;
+    height: 92px;
+    padding: 12px 8px 8px 8px;
+    spacing: 8px;
+    border-radius: 8px;
+    background-color: rgba(150, 150, 165, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    transition-duration: 120ms;
+}
+
+.win11-top-app-card:hover {
+    background-color: rgba(150, 150, 165, 0.25);
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+.win11-top-app-card-label {
+    font-size: 8.5pt;
+    font-weight: 500;
+    text-align: center;
+}
+
+/* Search Results View (when typing a query) */
+.win11-search-results-box {
+    padding: 4px 26px 16px 26px;
+    spacing: 10px;
+}
+
+.win11-search-filter-bar {
+    spacing: 6px;
+    padding-bottom: 4px;
+}
+
+.win11-search-filter-pill {
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-size: 9pt;
+    font-weight: 500;
+    background-color: rgba(150, 150, 165, 0.12);
+    transition-duration: 120ms;
+}
+
+.win11-search-filter-pill:hover {
+    background-color: rgba(150, 150, 165, 0.24);
+}
+
+.win11-search-filter-pill-active {
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-size: 9pt;
+    font-weight: bold;
+    background-color: rgba(150, 150, 165, 0.32);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+}
+
+.win11-search-results-columns {
+    spacing: 14px;
+}
+
+.win11-search-results-list-box {
+    spacing: 3px;
+    padding-right: 4px;
+}
+
+.win11-search-category-label {
+    font-size: 9pt;
+    font-weight: bold;
+    opacity: 0.75;
+    padding: 8px 8px 3px 8px;
+}
+
+.win11-search-result-item {
+    padding: 7px 10px;
+    spacing: 10px;
+    border-radius: 6px;
+    transition-duration: 120ms;
+}
+
+.win11-search-result-item:hover,
+.win11-search-result-item-selected {
+    background-color: rgba(150, 150, 165, 0.20);
+}
+
+/* Right Preview Pane in Search Results */
+.win11-search-preview-pane {
+    width: 225px;
+    padding: 16px 14px;
+    spacing: 12px;
+    border-radius: 8px;
+    background-color: rgba(150, 150, 165, 0.10);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.win11-search-preview-title {
+    font-size: 11pt;
+    font-weight: bold;
+    text-align: center;
+}
+
+.win11-search-preview-desc {
+    font-size: 8.5pt;
+    opacity: 0.72;
+    text-align: center;
+}
+
+.win11-search-preview-actions {
+    spacing: 4px;
+    padding-top: 6px;
+}
+
+.win11-search-preview-action-btn {
+    padding: 7px 10px;
+    spacing: 8px;
+    border-radius: 6px;
+    font-size: 9pt;
+    transition-duration: 120ms;
+}
+
+.win11-search-preview-action-btn:hover {
+    background-color: rgba(150, 150, 165, 0.20);
+}
+
+/* Bottom Footer Bar (User Avatar + Name on left, Quick Places + Power on right) */
+.appmenu-sidebar.win11-footer-bar {
+    padding: 10px 26px;
+    border-radius: 0 0 8px 8px;
+    border-right-width: 0;
+    border-top-width: 1px;
+    spacing: 10px;
+}
+
+.win11-user-profile-btn {
+    padding: 5px 10px;
+    spacing: 10px;
+    border-radius: 6px;
+    transition-duration: 120ms;
+}
+
+.win11-user-profile-btn:hover {
+    background-color: rgba(150, 150, 165, 0.18);
+}
+
+.win11-user-avatar-icon {
+    border-radius: 999px;
+}
+
+.win11-user-name-label {
+    font-size: 9.5pt;
+    font-weight: 500;
+}
+
+.win11-footer-actions-box {
+    spacing: 4px;
+}
+
+.win11-footer-icon-btn {
+    padding: 8px;
+    border-radius: 6px;
+    transition-duration: 120ms;
+}
+
+.win11-footer-icon-btn:hover {
+    background-color: rgba(150, 150, 165, 0.20);
+}
+
+/* Floating Context Menu & Power Menu Overlay inside Popup */
+.win11-floating-menu {
+    padding: 6px;
+    spacing: 2px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+
+.win11-floating-menu-item {
+    padding: 7px 12px;
+    spacing: 10px;
+    border-radius: 5px;
+    font-size: 9.5pt;
+    transition-duration: 100ms;
+}
+
+.win11-floating-menu-item:hover {
+    background-color: rgba(150, 150, 165, 0.22);
+}
