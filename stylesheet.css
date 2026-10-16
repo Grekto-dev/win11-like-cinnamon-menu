@@ -7,7 +7,7 @@
 .win11-applet-container {
     padding: 0;
     margin: 0;
-    spacing: 3px;
+    spacing: 17px;
     background-color: transparent !important;
     border: none !important;
     box-shadow: none !important;
@@ -23,9 +23,9 @@
 
 /* Individual Start Button (Exact taskbar window button hover & active feel) */
 .win11-start-button {
-    padding: 0 8px;
-    margin: 2px 1px;
-    spacing: 4px;
+    padding: 0 4px;
+    margin: 2px 0;
+    spacing: 0;
     border-radius: 4px;
     border: 1px solid transparent;
     background-color: transparent;
@@ -60,7 +60,7 @@
 
 /* Taskbar Search Button - Windows 11 Pill Style (Vertically centered) */
 .win11-search-panel-pill {
-    margin: 0 3px;
+    margin: 0;
     padding: 0 14px;
     spacing: 7px;
     border-radius: 999px;
@@ -88,9 +88,9 @@
 
 /* Taskbar Search Button - Minimalist Icon Style */
 .win11-search-panel-icon-btn {
-    padding: 0 8px;
-    margin: 2px 1px;
-    spacing: 4px;
+    padding: 0 4px;
+    margin: 2px 0;
+    spacing: 0;
     border-radius: 4px;
     border: 1px solid transparent;
     background-color: transparent;

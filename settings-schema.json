@@ -20,7 +20,7 @@
         "general-lang-search": {
             "type": "section",
             "title": "Language and Search Button / Idioma e Botão de Pesquisa",
-            "keys": ["language", "show-search-button", "search-button-style", "search-button-size-mode", "search-pill-height"]
+            "keys": ["language", "show-search-button", "search-button-style", "search-button-size-mode", "search-pill-height", "search-button-spacing"]
         },
         "general-behavior": {
             "type": "section",
@@ -91,6 +91,16 @@
         "units": "px",
         "description": "Custom search button height / Altura personalizada do botão",
         "dependency": "search-button-size-mode=custom"
+    },
+    "search-button-spacing": {
+        "type": "spinbutton",
+        "default": 17,
+        "min": 0,
+        "max": 40,
+        "step": 1,
+        "units": "px",
+        "description": "Spacing between menu and search / Espaçamento entre menu e pesquisa",
+        "dependency": "show-search-button"
     },
     "overlay-key": {
         "type": "keybinding",

@@ -636,6 +636,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this._applet_icon_box.set_alignment(St.Align.MIDDLE, St.Align.MIDDLE);
         this.startButtonBox.add(this._applet_icon_box, { y_align: St.Align.MIDDLE, y_fill: false });
         this.startButtonBox.add(this._layoutBin, { y_align: St.Align.MIDDLE, y_fill: false });
+        this._layoutBin.hide();
         this.actor.add(this.startButtonBox, { y_align: St.Align.MIDDLE, y_fill: true });
 
         // Build Taskbar Search Button
@@ -684,6 +685,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this.settings.bind("search-button-style", "searchButtonStyle", () => this._updateSearchPanelButton());
         this.settings.bind("search-button-size-mode", "searchButtonSizeMode", () => this._updateSearchPanelButton());
         this.settings.bind("search-pill-height", "searchPillHeight", () => this._updateSearchPanelButton());
+        this.settings.bind("search-button-spacing", "searchButtonSpacing", () => this._updateSearchPanelButton());
 
         this.settings.bind("overlay-key", "overlayKey", () => this._updateKeybinding());
         this.settings.bind("menu-custom", "menuCustom", () => this._updateIconAndLabel());
@@ -853,6 +855,9 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         }
         this.searchPanelButton.show();
         this.searchPanelLabel.set_text(this.t("search"));
+
+        let spacing = (this.searchButtonSpacing !== undefined) ? this.searchButtonSpacing : 17;
+        this.actor.set_style('spacing: ' + spacing + 'px;');
 
         let ph = this._panelHeight || (this.panel ? this.panel.height : 40);
 
@@ -1040,9 +1045,15 @@ class Win11MenuApplet extends Applet.TextIconApplet {
 
         if (this._orientation === St.Side.LEFT || this._orientation === St.Side.RIGHT) {
             this.set_applet_label("");
+            this._layoutBin.hide();
         } else {
             let lbl = this.menuCustom ? (this.menuLabel || "") : "";
             this.set_applet_label(lbl);
+            if (lbl && lbl.trim().length > 0) {
+                this._layoutBin.show();
+            } else {
+                this._layoutBin.hide();
+            }
         }
     }
 
