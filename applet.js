@@ -520,6 +520,16 @@ class Win11PopupMenu extends Applet.AppletPopupMenu {
         super(launcher, orientation);
     }
 
+    _onOpenStateChanged(menu, open, sourceActor) {
+        if (sourceActor && sourceActor.actor) {
+            sourceActor.actor.change_style_pseudo_class("checked", false);
+            sourceActor.actor.change_style_pseudo_class("active", false);
+        }
+        if (this.launcher && this.launcher._updatePanelButtonsActiveState) {
+            this.launcher._updatePanelButtonsActiveState();
+        }
+    }
+
     _calculatePosition() {
         if (!this.launcher || !this.launcher.centerMenuOnScreen) {
             return super._calculatePosition();
@@ -619,7 +629,9 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this.menu.setCustomStyleClass('appmenu-background');
 
         // Configure panel actor to hold two independent buttons: Start button + Search button
-        this.actor.set_style_class_name('applet-box win11-applet-container');
+        // Do NOT use 'applet-box' so the container never gets theme-level hover/checked background
+        this.actor.set_style_class_name('win11-applet-container');
+        this.actor.track_hover = false;
 
         this.startButtonBox = new St.BoxLayout({
             style_class: 'win11-start-button grouped-window-list-item-box',
@@ -725,6 +737,11 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this._editMenuItem = new PopupMenu.PopupIconMenuItem(this.t("edit_menu"), "xsi-document-edit", St.IconType.SYMBOLIC);
         this._editMenuItem.connect("activate", () => Util.spawnCommandLine("cinnamon-menu-editor"));
         this._applet_context_menu.addMenuItem(this._editMenuItem);
+        this._applet_context_menu.connect("open-state-changed", () => {
+            this.actor.change_style_pseudo_class("checked", false);
+            this.actor.change_style_pseudo_class("active", false);
+            this.actor.change_style_pseudo_class("hover", false);
+        });
 
         // State variables
         this._currentPopupMode = "start"; // "start" or "search"
@@ -905,6 +922,10 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         let isOpen = this.menu && this.menu.isOpen;
         let inStart = isOpen && this._currentPopupMode === "start";
         let inSearch = isOpen && this._currentPopupMode === "search";
+
+        this.actor.change_style_pseudo_class("checked", false);
+        this.actor.change_style_pseudo_class("active", false);
+        this.actor.change_style_pseudo_class("hover", false);
 
         this.startButtonBox.change_style_pseudo_class("checked", inStart);
         this.startButtonBox.change_style_pseudo_class("active", inStart);

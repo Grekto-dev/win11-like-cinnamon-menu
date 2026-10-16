@@ -3,22 +3,23 @@
  * Follows Windows 11 layout & geometry while inheriting Cinnamon theme colors
  * ========================================================================= */
 
-/* Panel Container & Buttons */
+/* Panel Container & Buttons (Completely transparent, individual hover per button) */
 .win11-applet-container {
     padding: 0;
     margin: 0;
     spacing: 5px;
-    background-color: transparent !important;
-    border: none !important;
-    box-shadow: none !important;
+    background-color: transparent;
+    border: none;
+    box-shadow: none;
 }
 
 .win11-applet-container:hover,
 .win11-applet-container:checked,
-.win11-applet-container:active {
-    background-color: transparent !important;
-    border: none !important;
-    box-shadow: none !important;
+.win11-applet-container:active,
+.win11-applet-container:focus {
+    background-color: transparent;
+    border: none;
+    box-shadow: none;
 }
 
 /* Individual Start Button (Exact taskbar window button hover & active feel) */
@@ -33,10 +34,10 @@
 }
 
 .win11-start-button.grouped-window-list-item-box {
-    border-bottom: none !important;
-    border-top: none !important;
-    border-left: none !important;
-    border-right: none !important;
+    border-bottom-width: 0;
+    border-top-width: 0;
+    border-left-width: 0;
+    border-right-width: 0;
 }
 
 .win11-start-button StBin,
@@ -98,10 +99,10 @@
 }
 
 .win11-search-panel-icon-btn.grouped-window-list-item-box {
-    border-bottom: none !important;
-    border-top: none !important;
-    border-left: none !important;
-    border-right: none !important;
+    border-bottom-width: 0;
+    border-top-width: 0;
+    border-left-width: 0;
+    border-right-width: 0;
 }
 
 .win11-search-panel-icon-btn:hover {
