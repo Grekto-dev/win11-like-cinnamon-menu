@@ -856,7 +856,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this.searchPanelButton.show();
         this.searchPanelLabel.set_text(this.t("search"));
 
-        let spacing = (this.searchButtonSpacing !== undefined) ? this.searchButtonSpacing : 17;
+        let spacing = (this.searchButtonSpacing !== undefined) ? this.searchButtonSpacing : 5;
         this.actor.set_style('spacing: ' + spacing + 'px;');
 
         let ph = this._panelHeight || (this.panel ? this.panel.height : 40);
