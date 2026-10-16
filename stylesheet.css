@@ -39,6 +39,14 @@
     border-right: none !important;
 }
 
+.win11-start-button StBin,
+.win11-start-button StIcon,
+.win11-search-panel-icon-btn StBin,
+.win11-search-panel-icon-btn StIcon {
+    padding: 0;
+    margin: 0;
+}
+
 .win11-start-button:hover {
     background-color: rgba(255, 255, 255, 0.12);
     border-color: rgba(255, 255, 255, 0.05);

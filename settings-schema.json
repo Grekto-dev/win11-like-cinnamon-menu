@@ -19,7 +19,7 @@
         },
         "general-lang-search": {
             "type": "section",
-            "title": "Language & Search Button / Idioma e Botão de Pesquisa",
+            "title": "Language and Search Button / Idioma e Botão de Pesquisa",
             "keys": ["language", "show-search-button", "search-button-style", "search-button-size-mode", "search-pill-height"]
         },
         "general-behavior": {

@@ -557,6 +557,8 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         // Move IconApplet's icon box and TextIconApplet's label bin into startButtonBox
         this.actor.remove_actor(this._applet_icon_box);
         this.actor.remove_actor(this._layoutBin);
+        this._applet_icon_box.set_fill(false, false);
+        this._applet_icon_box.set_alignment(St.Align.MIDDLE, St.Align.MIDDLE);
         this.startButtonBox.add(this._applet_icon_box, { y_align: St.Align.MIDDLE, y_fill: false });
         this.startButtonBox.add(this._layoutBin, { y_align: St.Align.MIDDLE, y_fill: false });
         this.actor.add(this.startButtonBox, { y_align: St.Align.MIDDLE, y_fill: true });
@@ -790,8 +792,8 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             } else {
                 iconSize = Math.max(16, Math.min(ph - 6, Math.round(ph * 0.8)));
             }
+            this.searchPanelIcon.set_style(null);
             this.searchPanelIcon.set_icon_size(iconSize);
-            this.searchPanelIcon.set_style(`icon-size: ${iconSize}px; width: ${iconSize}px; height: ${iconSize}px;`);
         } else {
             this.searchPanelButton.set_style_class_name('win11-search-panel-pill');
             if (this._orientation === St.Side.LEFT || this._orientation === St.Side.RIGHT) {
@@ -812,8 +814,8 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             this.searchPanelButton.set_y_align(Clutter.ActorAlign.CENTER);
 
             let searchIconSize = Math.max(14, Math.min(pillH - 8, Math.round(pillH * 0.54)));
+            this.searchPanelIcon.set_style(null);
             this.searchPanelIcon.set_icon_size(searchIconSize);
-            this.searchPanelIcon.set_style(`icon-size: ${searchIconSize}px; width: ${searchIconSize}px; height: ${searchIconSize}px;`);
         }
         this._updatePanelButtonsActiveState();
     }
@@ -904,10 +906,12 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             this._applet_icon.set_style_class_name('system-status-icon');
         }
 
+        this._applet_icon.set_style(null);
         this._applet_icon.set_icon_size(size);
-        this._applet_icon.set_style(`icon-size: ${size}px; width: ${size}px; height: ${size}px;`);
         if (this._applet_icon_box) {
-            this._applet_icon_box.set_style(`width: ${size}px; height: ${size}px;`);
+            this._applet_icon_box.set_style(null);
+            this._applet_icon_box.set_fill(false, false);
+            this._applet_icon_box.set_alignment(St.Align.MIDDLE, St.Align.MIDDLE);
         }
     }
 
