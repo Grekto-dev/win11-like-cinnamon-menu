@@ -520,6 +520,81 @@ class Win11PopupMenu extends Applet.AppletPopupMenu {
         super(launcher, orientation);
     }
 
+    _calculatePosition() {
+        if (!this.launcher || !this.launcher.centerMenuOnScreen) {
+            return super._calculatePosition();
+        }
+
+        if (!this.actor.visible) {
+            this.box.show();
+        }
+        let [minWidth, minHeight, natWidth, natHeight] = this.actor.get_preferred_size();
+        let monitor = Main.layoutManager.findMonitorForActor(this.sourceActor);
+        if (!monitor) {
+            monitor = Main.layoutManager.primaryMonitor || { x: 0, y: 0, width: global.screen_width, height: global.screen_height, index: 0 };
+        }
+
+        let x1 = monitor.x;
+        let x2 = x1 + monitor.width;
+        let y1 = monitor.y;
+        let y2 = y1 + monitor.height;
+
+        let panels = Main.panelManager.getPanelsInMonitor(monitor.index);
+        let PanelLoc = PopupMenu.PanelLoc || { top: 0, bottom: 1, left: 2, right: 3 };
+
+        for (let panel of panels) {
+            if (!panel.getIsVisible()) continue;
+            switch (panel.panelPosition) {
+                case PanelLoc.top:
+                    y1 += panel.actor.height;
+                    break;
+                case PanelLoc.bottom:
+                    y2 -= panel.actor.height;
+                    break;
+                case PanelLoc.left:
+                    x1 += panel.actor.width;
+                    break;
+                case PanelLoc.right:
+                    x2 -= panel.actor.width;
+                    break;
+            }
+        }
+
+        // Windows 11 behavior: the Start menu ALWAYS opens centered horizontally on the monitor/screen
+        let screenCenterX = x1 + (x2 - x1) / 2;
+        let xPos = screenCenterX - (natWidth / 2);
+
+        if (xPos < x1) xPos = x1;
+        else if (xPos + natWidth > x2) xPos = x2 - natWidth;
+
+        let yPos;
+        let floatOffset = 10; // Floating margin in Windows 11 style
+
+        switch (this._orientation) {
+            case St.Side.TOP:
+                this.sideFlipped = false;
+                yPos = y1 + floatOffset;
+                break;
+            case St.Side.BOTTOM:
+            default:
+                this.sideFlipped = true;
+                yPos = y2 - natHeight - floatOffset;
+                if (yPos < y1) {
+                    yPos = y2 - natHeight;
+                }
+                break;
+            case St.Side.LEFT:
+            case St.Side.RIGHT:
+                let screenCenterY = y1 + (y2 - y1) / 2;
+                yPos = screenCenterY - (natHeight / 2);
+                if (yPos < y1) yPos = y1;
+                else if (yPos + natHeight > y2) yPos = y2 - natHeight;
+                break;
+        }
+
+        return [Math.round(xPos), Math.round(yPos)];
+    }
+
     _onKeyPressEvent(actor, event) {
         if (event.get_key_symbol() === Clutter.KEY_Escape) {
             if (this.launcher && this.launcher._handleEscapeKey()) {
@@ -635,6 +710,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this.settings.bind("activate-on-hover", "activateOnHover", () => this._updateActivateOnHover());
         this.settings.bind("hover-delay", "hoverDelayMs", () => this._updateActivateOnHover());
         this.settings.bind("enable-animation", "enableAnimation", null);
+        this.settings.bind("center-menu-on-screen", "centerMenuOnScreen", () => this._onCenterSettingChanged());
 
         this.settings.bind("popup-width", "popup_width");
         this.settings.bind("popup-height", "popup_height");
@@ -1042,6 +1118,17 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this.mainContainer.natural_width = Math.round(width * global.ui_scale);
         this.mainContainer.natural_height = Math.round(height * global.ui_scale);
         this._size_dirty = false;
+        if (this.menu && this.menu.isOpen) {
+            let [xPos, yPos] = this.menu._calculatePosition();
+            this.menu.actor.set_position(xPos, yPos);
+        }
+    }
+
+    _onCenterSettingChanged() {
+        if (this.menu && this.menu.isOpen) {
+            let [xPos, yPos] = this.menu._calculatePosition();
+            this.menu.actor.set_position(xPos, yPos);
+        }
     }
 
     /* =====================================================================

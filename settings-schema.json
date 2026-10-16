@@ -25,7 +25,7 @@
         "general-behavior": {
             "type": "section",
             "title": "Behavior / Comportamento",
-            "keys": ["overlay-key", "activate-on-hover", "hover-delay", "enable-animation", "enable-autoscroll"]
+            "keys": ["overlay-key", "center-menu-on-screen", "activate-on-hover", "hover-delay", "enable-animation", "enable-autoscroll"]
         },
         "appearance-panel": {
             "type": "section",
@@ -96,6 +96,11 @@
         "type": "keybinding",
         "description": "Keyboard shortcut to open and close the menu / Atalho de teclado para abrir e fechar o menu",
         "default": "Super_L::Super_R"
+    },
+    "center-menu-on-screen": {
+        "type": "switch",
+        "default": true,
+        "description": "Center menu horizontally on screen (Windows 11 style) / Centralizar menu horizontalmente na tela (estilo Windows 11)"
     },
     "menu-custom": {
         "type": "switch",
