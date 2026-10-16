@@ -94,7 +94,7 @@
     },
     "search-button-spacing": {
         "type": "spinbutton",
-        "default": 5,
+        "default": 0,
         "min": 0,
         "max": 40,
         "step": 1,
