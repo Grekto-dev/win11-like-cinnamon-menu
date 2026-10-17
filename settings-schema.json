@@ -35,7 +35,7 @@
         "appearance-menu": {
             "type": "section",
             "title": "Menu Options / Opções do Menu",
-            "keys": ["application-icon-size", "show-description", "reset-menu-size-button", "reset-pinned-button"]
+            "keys": ["icon-size-mode", "show-description", "reset-pinned-button"]
         },
         "content-sections": {
             "type": "section",
@@ -121,9 +121,10 @@
     "menu-icon": {
         "type": "iconfilechooser",
         "default": "linuxmint-logo-ring-symbolic",
-        "description": "Menu Icon (Linux Mint) / Ícone do Menu",
+        "description": "Start button icon / Ícone do botão Iniciar",
+        "tooltip": "Choose a themed icon or browse for a local image file in the native Cinnamon icon chooser. / Escolha um ícone do tema ou procure uma imagem local no seletor nativo do Cinnamon.",
         "default_icon": "linuxmint-logo-ring-symbolic",
-        "default_category": "Linux Mint",
+
         "icon_categories": [
             {
                 "name": "Linux Mint",
@@ -179,14 +180,15 @@
         "description": "Panel Text / Texto no painel",
         "dependency": "menu-custom"
     },
-    "application-icon-size": {
-        "type": "spinbutton",
-        "default": 32,
-        "min": 20,
-        "max": 48,
-        "step": 2,
-        "units": "px",
-        "description": "Applications icon size / Tamanho dos ícones de aplicativos"
+    "icon-size-mode": {
+        "type": "combobox",
+        "default": "standard",
+        "description": "Menu application icons / Ícones dos aplicativos no menu",
+        "tooltip": "Applies immediately. Sizes adapt proportionally to the panel and available screen area. / Aplicação imediata. Os tamanhos se ajustam proporcionalmente ao painel e à área disponível da tela.",
+        "options": {
+            "Standard (32 px, 8 columns) / Padrão (32 px, 8 colunas)": "standard",
+            "Large (48 px, 6 columns) / Grande (48 px, 6 colunas)": "large"
+        }
     },
     "show-avatar": {
         "type": "switch",
@@ -273,24 +275,13 @@
         "description": "Open the menu editor / Abrir editor do menu",
         "callback": "_launch_editor"
     },
-    "reset-menu-size-button": {
-        "type": "button",
-        "description": "Restore the menu to its original size / Restaurar tamanho original do menu",
-        "callback": "_reset_menu_size"
-    },
+
     "reset-pinned-button": {
         "type": "button",
         "description": "Reset pinned apps to default / Restaurar aplicativos fixados padrão",
         "callback": "_reset_pinned_apps"
     },
-    "popup-width": {
-        "type": "generic",
-        "default": 680
-    },
-    "popup-height": {
-        "type": "generic",
-        "default": 720
-    },
+
     "pinned-items": {
         "type": "generic",
         "default": []

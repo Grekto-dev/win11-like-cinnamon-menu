@@ -9,9 +9,11 @@ A modern desktop applet for the **Cinnamon Desktop Environment** (Linux Mint and
 - **Windows 11 Start Menu Design & Geometry**:
   - Centered popup window with rounded cards, padding, and smooth transition animations.
   - Preserves your active Cinnamon theme's colors, dark/light mode, and accent tones.
-  - Official **Linux Mint logo** menu icon by default (`linuxmint-logo-ring-symbolic`), with an integrated icon picker for all official Mint emblems.
+  - **Fixed, proportional size**: the popup scales with the panel thickness (680×768 at a 48px panel, the Windows 11 Start menu as reference), is clamped to the monitor work area and cannot be resized. Previously saved sizes are ignored.
+  - **Configurable Start button icon**: Linux Mint logo by default; the setting opens Cinnamon's icon chooser, which accepts any themed icon name or image file.
+  - **Icon size modes**: *Standard* (32px icons, 8 columns) or *Large* (48px icons, 6 columns).
 
-- **Pinned Applications (8-Column Grid)**:
+- **Pinned Applications (8-column grid in Standard mode, 6 in Large)**:
   - **Drag and Drop**: Reorder pinned apps with smooth auto-arranging animations.
   - **Folder Creation**: Hold an app over another icon briefly, then drop to create a folder with a 2x2 miniature preview. Quick passes do not create folders accidentally.
   - **Explicit Opening & Rename**: A new folder stays closed. Click it to open; click its title to rename. Clicking outside confirms the name and closes only the folder.

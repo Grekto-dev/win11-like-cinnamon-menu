@@ -54,6 +54,59 @@ function harness() {
     return {app, flush, timers, tile, actor, FolderAppTile, Class, context};
 }
 
+test('large six-column DND uses the same geometry for hit tests, animation and cancellation', () => {
+    const {app, tile, flush} = harness();
+    app._layoutMetrics = {pinned: {cols: 6, cellW: 101, cellH: 104,
+        mergeInset: 23, mergeTop: 6, mergeBottom: 64}};
+    const dragged = tile(0);
+    for (let i = 1; i < 9; i++) tile(i);
+    app._resetPinnedTilesPositions();
+    assert.equal(app._pinnedTiles[6].currentX, 0);
+    assert.equal(app._pinnedTiles[6].currentY, 104);
+    app._onPinnedTileDragBegin(dragged);
+    app._handlePinnedGridDragOver(dragged, null, 205, 180, 0);
+    flush();
+    assert.equal(app._dragState.previewSlot, 8);
+    assert.deepEqual([dragged.currentX, dragged.currentY], [202, 104]);
+    app._onPinnedTileDragEnd(dragged, false);
+    assert.deepEqual([dragged.currentX, dragged.currentY], [0, 0]);
+    flush(); // Cinnamon has released the old source before another drag starts.
+    app._onPinnedTileDragBegin(dragged);
+    app._handlePinnedGridDragOver(dragged, null, 150, 58, 0);
+    flush();
+    assert.equal(app._dragState.folderTargetIndex, 1);
+});
+test('large folder DND uses larger cells for reorder and reset', () => {
+    const {app, actor, FolderAppTile} = harness();
+    app._layoutMetrics = {folder: {cols: 4, cellW: 104, cellH: 108}};
+    const folder = {id: 'f', apps: ['a', 'b', 'c', 'd', 'e']};
+    app.pinnedItems = [folder];
+    const dragged = Object.assign(new FolderAppTile(), {index: 0, appId: 'a', folderData: folder, actor: actor()});
+    app._folderTiles = [dragged, ...[1, 2, 3, 4].map(index => ({index, currentSlot: index, actor: actor()}))];
+    app._onFolderTileDragBegin(dragged);
+    app._handleFolderGridDragOver(dragged, null, 15, 115, 0);
+    assert.equal(app._folderDragState.previewSlot, 4);
+    assert.deepEqual([dragged.currentX, dragged.currentY], [0, 108]);
+    app._onFolderTileDragEnd(dragged, false);
+    assert.deepEqual([app._folderTiles[4].currentX, app._folderTiles[4].currentY], [0, 108]);
+});
+test('icon mode changes during a drag wait for Cinnamon to release its source actor', () => {
+    const {app, tile, flush, context} = harness();
+    const dragged = tile(0);
+    context.DND.isDragging = () => true;
+    app._onPinnedTileDragBegin(dragged);
+    app._onLayoutChanged();
+    assert.equal(app._layoutRefreshPending, true);
+    let updates = 0;
+    app._onLayoutChanged = () => updates++;
+    app._onPinnedTileDragEnd(dragged, false);
+    flush();
+    assert.equal(updates, 0);
+    context.DND.isDragging = () => false;
+    flush();
+    assert.equal(updates, 1);
+});
+
 test('menu event capture yields to the real DND grab until drag completion', () => {
     const {app, context, tile, flush} = harness();
     app.menu = {passEvents: false};
@@ -84,6 +137,7 @@ test('closing a folder returns focus before the overlay disappears', () => {
     const order = [];
     app._closeFolder = Class.prototype._closeFolder;
     app.menu = {isOpen: true, actor: {grab_key_focus() {order.push('focus');}}};
+    app._queueAllAppsMaterialize = () => {};
     app.folderCard = actor();
     app.folderOverlay = {visible: true, hide() {order.push('hide');}};
     app._closeFolder();

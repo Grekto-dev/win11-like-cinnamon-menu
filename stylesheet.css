@@ -180,7 +180,7 @@
     border-color: rgba(255, 255, 255, 0.14);
 }
 
-/* Pinned Apps Grid (8 columns) */
+/* Pinned grid geometry is supplied live: standard 8 / large 6 columns. */
 .win11-pinned-grid-wrapper {
     padding: 2px 0;
 }
@@ -274,10 +274,12 @@
 }
 
 .win11-recent-row {
+    min-width: 0;
     spacing: 12px;
 }
 
 .win11-recent-item {
+    min-width: 0;
     padding: 7px 10px;
     spacing: 12px;
     border-radius: 6px;
@@ -290,11 +292,13 @@
 }
 
 .win11-recent-item-title {
+    min-width: 0;
     font-size: 9.5pt;
     font-weight: 500;
 }
 
 .win11-recent-item-subtitle {
+    min-width: 0;
     font-size: 8pt;
     opacity: 0.68;
 }
