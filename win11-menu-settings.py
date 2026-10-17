@@ -68,6 +68,7 @@ I18N = {
         "menu_icon_size": "Custom icon size",
         "menu_label": "Panel text",
         "search_display": "Taskbar search",
+        "search_vertical_note": "The search box needs a horizontal bar. On vertical bars the vertical icon and label is used.",
         "search_hidden": "Hide",
         "search_icon": "Search icon only",
         "search_pill": "Search icon and label",
@@ -142,6 +143,7 @@ I18N = {
         "menu_icon_size": "Tamanho personalizado do ícone",
         "menu_label": "Texto no painel",
         "search_display": "Pesquisa na barra de tarefas",
+        "search_vertical_note": "A caixa de pesquisa precisa de uma barra horizontal. Em barras verticais, o ícone e rótulo é exibido na vertical.",
         "search_hidden": "Ocultar",
         "search_icon": "Somente ícone de pesquisa",
         "search_pill": "Ícone e rótulo de pesquisa",
@@ -346,6 +348,43 @@ SIZE_AUTO_CUSTOM = [("auto", "size_auto_taskbar"), ("custom", "size_custom")]
 SEARCH_HEIGHT_MODE = [("auto", "size_auto"), ("custom", "size_custom_f")]
 SEARCH_DISPLAY = [("hidden", "search_hidden"), ("icon", "search_icon"),
                   ("pill", "search_pill"), ("box", "search_box")]
+
+def parse_panel_position(enabled_applets, panels_enabled, instance_id):
+    """Side ("top" | "bottom" | "left" | "right") of the panel hosting this applet instance, or None.
+
+    enabled_applets: ["panel1:right:3:<uuid>:<instance>", ...]; panels_enabled: ["<id>:<monitor>:<side>", ...]
+    """
+    panel_id = None
+    for entry in enabled_applets or []:
+        parts = entry.split(":")
+        if len(parts) >= 5 and parts[3] == UUID and parts[4] == str(instance_id):
+            panel_id = parts[0].replace("panel", "")
+            break
+    if panel_id is None:
+        return None
+    for entry in panels_enabled or []:
+        parts = entry.split(":")
+        if len(parts) >= 3 and parts[0] == panel_id:
+            return parts[2]
+    return None
+
+
+def is_vertical(position):
+    return position in ("left", "right")
+
+
+def panel_position(instance_id):
+    """Side of this instance's panel; WIN11_MENU_PANEL_POSITION overrides it (tests)."""
+    forced = os.environ.get("WIN11_MENU_PANEL_POSITION")
+    if forced:
+        return forced
+    try:
+        settings = Gio.Settings.new("org.cinnamon")
+        return parse_panel_position(settings.get_strv("enabled-applets"), settings.get_strv("panels-enabled"), instance_id)
+    except Exception:  # missing schema outside Cinnamon
+        return None
+
+
 MENU_ICON_SIZES = [("standard", "icon_small"), ("medium", "icon_medium"), ("large", "icon_large")]
 LANGUAGES = [("en", "English"), ("ptbr", "Português (Brasil)")]  # never translated
 # Order matters: this is the top -> bottom order of the "Folders" sub-page. No power row.
@@ -375,6 +414,7 @@ class SettingsWindow(Gtk.Window):
         lang = store.get("language", "en")
         self.lang = lang if lang in I18N else "en"
         self._relabel = []        # callables re-applying the current language
+        self._disabled_options = {}  # combo key -> option ids that cannot be picked
         self.controls = {}        # config key -> widget
         self._loading = True      # True while widgets are being filled from the config
         self._pending = {}        # key -> value waiting for the debounce timer
@@ -556,6 +596,19 @@ class SettingsWindow(Gtk.Window):
         self._watch(key, combo)
         return combo
 
+    def _disable_option(self, key, ident):
+        """Grey out one entry of a combo (it stays visible but cannot be picked)."""
+        combo = self.controls[key]
+        cell = combo.get_cells()[0]
+
+        def sensitivity(_layout, renderer, model, tree_iter, _data):
+            renderer.set_property("sensitive", model.get_value(tree_iter, 1) != ident)
+        combo.set_cell_data_func(cell, sensitivity, None)
+        self._disabled_options.setdefault(key, set()).add(ident)
+
+    def option_sensitive(self, key, ident):
+        return ident not in self._disabled_options.get(key, set())
+
     def icon_chooser(self, key):
         value = str(self.store.get(key, "") or "")
         if XApp is not None:
@@ -656,7 +709,11 @@ class SettingsWindow(Gtk.Window):
         self.row(start, "menu_label", entry)
 
         search = self.group(box, "group_search")
-        self.row(search, "search_display", self.combo("search-display", SEARCH_DISPLAY, "pill"))
+        vertical = is_vertical(panel_position(self.store.instance_id))
+        self.row(search, "search_display", self.combo("search-display", SEARCH_DISPLAY, "pill"),
+                 sub_key="search_vertical_note" if vertical else None)
+        if vertical:
+            self._disable_option("search-display", "box")
         self.row(search, "search_size_mode", self.combo("search-button-size-mode", SEARCH_HEIGHT_MODE, "auto"))
         self.row(search, "search_pill_height", self.spin("search-pill-height", 20, 60, 30))
         self.row(search, "search_spacing", self.spin("search-button-spacing", 0, 24, 0),

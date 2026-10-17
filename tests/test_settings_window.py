@@ -660,3 +660,72 @@ class AcceleratorTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class VerticalPanelTest(WindowTestCase):
+    """The search box needs a horizontal panel; on vertical panels its option is disabled."""
+
+    def with_position(self, position):
+        old = os.environ.get("WIN11_MENU_PANEL_POSITION")
+        if position is None:
+            os.environ.pop("WIN11_MENU_PANEL_POSITION", None)
+        else:
+            os.environ["WIN11_MENU_PANEL_POSITION"] = position
+
+        def restore():
+            if old is None:
+                os.environ.pop("WIN11_MENU_PANEL_POSITION", None)
+            else:
+                os.environ["WIN11_MENU_PANEL_POSITION"] = old
+        self.addCleanup(restore)
+
+    def test_position_is_read_from_enabled_applets_and_panels_enabled(self):
+        parse = self.mod.parse_panel_position
+        applets = ["panel1:right:3:win11-menu@cinnamon:31", "panel2:left:1:other@x:9"]
+        self.assertEqual(parse(applets, ["1:0:left", "2:0:bottom"], 31), "left")
+        self.assertEqual(parse(applets, ["1:0:bottom", "2:0:right"], 31), "bottom")
+        self.assertIsNone(parse(applets, ["2:0:right"], 31))
+        self.assertIsNone(parse(applets, ["1:0:left"], 77))
+        self.assertIsNone(parse([], [], 31))
+
+    def test_vertical_positions_are_detected(self):
+        self.assertTrue(self.mod.is_vertical("left"))
+        self.assertTrue(self.mod.is_vertical("right"))
+        self.assertFalse(self.mod.is_vertical("top"))
+        self.assertFalse(self.mod.is_vertical("bottom"))
+        self.assertFalse(self.mod.is_vertical(None))
+
+    def test_search_box_option_is_disabled_on_a_vertical_panel(self):
+        for position in ("left", "right"):
+            self.with_position(position)
+            win = self.open_window(language="ptbr")
+            self.assertFalse(win.option_sensitive("search-display", "box"), position)
+            for ident in ("hidden", "icon", "pill"):
+                self.assertTrue(win.option_sensitive("search-display", ident))
+            self.assertIn(self.mod.I18N["ptbr"]["search_vertical_note"], self.visible_texts(win))
+
+    def test_search_box_option_is_available_on_horizontal_panels(self):
+        for position in ("top", "bottom", None):
+            self.with_position(position)
+            win = self.open_window()
+            self.assertTrue(win.option_sensitive("search-display", "box"), position)
+            self.assertNotIn(self.mod.I18N["en"]["search_vertical_note"], self.visible_texts(win))
+
+    def test_note_follows_the_language(self):
+        self.with_position("left")
+        win = self.open_window(language="en")
+        win.language_combo.set_active_id("ptbr")
+        self.settle(win)
+        self.assertIn(self.mod.I18N["ptbr"]["search_vertical_note"], self.visible_texts(win))
+        self.assertNotIn(self.mod.I18N["en"]["search_vertical_note"], self.visible_texts(win))
+
+    def visible_texts(self, win):
+        texts = []
+
+        def walk(widget):
+            if isinstance(widget, Gtk.Label):
+                texts.append(widget.get_text())
+            if isinstance(widget, Gtk.Container):
+                widget.forall(walk)
+        walk(win)
+        return texts

@@ -593,11 +593,29 @@ class Win11PopupMenu extends Applet.AppletPopupMenu {
 
         let yPos;
         let floatOffset = this.launcher._getMenuFloatOffset(); // 12 px at the reference size, scaled
+        const centerY = y1 + (y2 - y1) / 2;
 
+        // x1/x2/y1/y2 already exclude every panel on this monitor, so each side only needs the
+        // gap to the panel it is attached to. sideFlipped tells the open/close animation which
+        // way to slide: true when the panel is at the bottom or on the right.
         switch (this._orientation) {
             case St.Side.TOP:
+                // Panel on top: open below it.
                 this.sideFlipped = false;
                 yPos = y1 + floatOffset;
+                break;
+            case St.Side.LEFT:
+                // Vertical panel on the left: open to its right, vertically centred.
+                // (Cinnamon: sideFlipped=true means the panel is on the right.)
+                this.sideFlipped = false;
+                xPos = Math.max(x1, Math.min(x1 + floatOffset, x2 - natWidth));
+                yPos = Math.max(y1, Math.min(centerY - natHeight / 2, y2 - natHeight));
+                break;
+            case St.Side.RIGHT:
+                // Vertical panel on the right: open to its left, vertically centred.
+                this.sideFlipped = true;
+                xPos = Math.max(x1, x2 - natWidth - floatOffset);
+                yPos = Math.max(y1, Math.min(centerY - natHeight / 2, y2 - natHeight));
                 break;
             case St.Side.BOTTOM:
             default:
@@ -606,13 +624,6 @@ class Win11PopupMenu extends Applet.AppletPopupMenu {
                 if (yPos < y1) {
                     yPos = y2 - natHeight;
                 }
-                break;
-            case St.Side.LEFT:
-            case St.Side.RIGHT:
-                let screenCenterY = y1 + (y2 - y1) / 2;
-                yPos = screenCenterY - (natHeight / 2);
-                if (yPos < y1) yPos = y1;
-                else if (yPos + natHeight > y2) yPos = y2 - natHeight;
                 break;
         }
 
@@ -700,7 +711,12 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             y_align: Clutter.ActorAlign.CENTER
         });
         this.searchPanelButton.add(this.searchPanelIcon, { y_align: St.Align.MIDDLE, y_fill: false });
-        this.searchPanelButton.add(this.searchPanelLabel, { y_align: St.Align.MIDDLE, y_fill: false });
+        // Plain widget (fixed layout): the rotated label must keep its natural size.
+        this.searchPanelLabelBin = new St.Widget({ style_class: 'win11-search-panel-label-bin' });
+        this.searchPanelLabelBin.add_child(this.searchPanelLabel);
+        this.searchPanelLabel.connect('notify::visible', () => this.searchPanelLabelBin.visible = this.searchPanelLabel.visible);
+        this.searchPanelLabel.connect('notify::mapped', () => this._refreshVerticalSearchLabel());
+        this.searchPanelButton.add(this.searchPanelLabelBin, { y_align: St.Align.MIDDLE, y_fill: false });
         // "Search box" mode: a real field. Inactive (not reactive, not editable) until clicked.
         this.searchPanelEntry = new St.Entry({
             style_class: 'win11-search-panel-entry',
@@ -970,12 +986,13 @@ class Win11MenuApplet extends Applet.TextIconApplet {
     }
 
     // Effective taskbar search mode: hidden | icon | pill | box.
-    // A text box cannot live in a vertical panel, so it degrades to the icon there.
+    // A text box cannot live in a vertical panel: it is disabled there and the vertical
+    // icon + label button is used instead.
     _searchMode() {
         let mode = ["hidden", "icon", "pill", "box"].includes(this.searchDisplay) ? this.searchDisplay : "pill";
         const vertical = this._orientation === St.Side.LEFT || this._orientation === St.Side.RIGHT;
         if (vertical && mode === "box")
-            mode = "icon";
+            mode = "pill";
         return mode;
     }
 
@@ -1001,6 +1018,8 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         let ph = this._panelHeight || (this.panel ? this.panel.height : 40);
 
         if (mode === "icon") {
+            this._clearVerticalSearchLabel();
+            this.searchPanelButton.set_vertical(false);
             this.searchPanelButton.set_style_class_name('win11-search-panel-icon-btn grouped-window-list-item-box');
             this.searchPanelLabel.hide();
             this.searchPanelEntry.hide();
@@ -1017,16 +1036,20 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             this.searchPanelIcon.set_style(null);
             this.searchPanelIcon.set_icon_size(iconSize);
         } else {
-            this.searchPanelButton.set_style_class_name('win11-search-panel-pill');
+            this.searchPanelButton.set_vertical(vertical);
+            this.searchPanelButton.set_style_class_name(vertical
+                ? 'win11-search-panel-pill win11-search-panel-pill-vertical' : 'win11-search-panel-pill');
             if (mode === "box") {
+                this._clearVerticalSearchLabel();
                 this.searchPanelLabel.hide();
                 this.searchPanelEntry.show();
             } else {
                 this.searchPanelEntry.hide();
+                this.searchPanelLabel.show();
                 if (vertical)
-                    this.searchPanelLabel.hide();
+                    this._applyVerticalSearchLabel(this._orientation === St.Side.LEFT ? -90 : 90);
                 else
-                    this.searchPanelLabel.show();
+                    this._clearVerticalSearchLabel();
             }
 
             let pillH;
@@ -1037,10 +1060,17 @@ class Win11MenuApplet extends Applet.TextIconApplet {
                 pillH = Math.max(24, Math.min(ph - 6, Math.round(ph * 0.75)));
             }
 
-            this.searchPanelButton.set_height(pillH);
-            // The field is as wide as the Windows 11 taskbar search box: ~4.9x the taskbar thickness.
-            this.searchPanelButton.set_width(mode === "box" ? Math.round(ph * 4.9) : -1);
-            this.searchPanelButton.set_y_align(Clutter.ActorAlign.CENTER);
+            if (vertical) {
+                // Stacked button: the pill thickness is its width and the length follows its content.
+                this.searchPanelButton.set_width(pillH);
+                this.searchPanelButton.set_height(-1);
+                this.searchPanelButton.set_x_align(Clutter.ActorAlign.CENTER);
+            } else {
+                this.searchPanelButton.set_height(pillH);
+                // The field is as wide as the Windows 11 taskbar search box: ~4.9x the taskbar thickness.
+                this.searchPanelButton.set_width(mode === "box" ? Math.round(ph * 4.9) : -1);
+                this.searchPanelButton.set_y_align(Clutter.ActorAlign.CENTER);
+            }
 
             let searchIconSize = Math.max(14, Math.min(pillH - 8, Math.round(pillH * 0.54)));
             this.searchPanelIcon.set_style(null);
@@ -1049,6 +1079,39 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         if (mode !== "box" && this._searchBoxActive)
             this._deactivateSearchBox();
         this._updatePanelButtonsActiveState();
+    }
+
+    // Vertical panels: the label text is rotated so the icon + label button reads along the bar.
+    // Rotation does not change layout, so the wrapper bin gets the swapped (rotated) size.
+    _applyVerticalSearchLabel(angle) {
+        this._verticalLabelAngle = angle;
+        this.searchPanelLabel.set_pivot_point(0.5, 0.5);
+        this.searchPanelLabel.rotation_angle_z = angle;
+        this._refreshVerticalSearchLabel();
+    }
+
+    _refreshVerticalSearchLabel() {
+        const label = this.searchPanelLabel;
+        if (this._verticalLabelAngle === null || this._verticalLabelAngle === undefined || !label.get_stage())
+            return;
+        // An explicit size from an earlier pass would be returned as the "natural" size.
+        label.set_size(-1, -1);
+        const [, width] = label.get_preferred_width(-1);
+        const [, height] = label.get_preferred_height(-1);
+        // The wrapper has a fixed layout, so the label keeps its natural size (otherwise it would
+        // be squeezed into the rotated, narrow footprint and ellipsized). The label's centre is
+        // moved onto the wrapper's centre, which is the pivot of the rotation.
+        label.set_size(width, height);
+        label.set_position(Math.round((height - width) / 2), Math.round((width - height) / 2));
+        this.searchPanelLabelBin.set_size(height, width);
+    }
+
+    _clearVerticalSearchLabel() {
+        this._verticalLabelAngle = null;
+        this.searchPanelLabel.rotation_angle_z = 0;
+        this.searchPanelLabel.set_size(-1, -1);
+        this.searchPanelLabel.set_position(0, 0);
+        this.searchPanelLabelBin.set_size(-1, -1);
     }
 
     /* =====================================================================

@@ -18,12 +18,13 @@ function harness(extra = {}) {
         set_text(t) {this.text = t; calls.push([name, 'set_text', t]);}, get_text() {return this.text;},
         set_style() {}, set_icon_size(n) {this.iconSize = n;}, set_style_class_name(c) {this.cls = c;},
         set_height(h) {this.height = h;}, set_width(w) {this.width = w;}, set_y_align() {},
-        set_reactive(v) {this.reactive = v;}, set_hint_text(t) {this.hint = t;}, change_style_pseudo_class() {}});
+        set_reactive(v) {this.reactive = v;}, set_hint_text(t) {this.hint = t;}, change_style_pseudo_class() {},
+        set_vertical(v) {this.vertical = v;}, set_x_align() {}});
     Object.assign(app, {_orientation: 3, _panelHeight: 48, searchButtonSizeMode: 'auto', searchPillHeight: 30, searchButtonSpacing: 0,
         menuIconSizeMode: 'auto', actor: {set_style() {}, get_text_direction: () => 0},
         searchPanelButton: widget('button'), searchPanelLabel: widget('label'), searchPanelIcon: widget('icon'),
         searchPanelEntry: widget('panelEntry'), searchEntry: widget('menuEntry'),
-        t: s => s, _updatePanelButtonsActiveState() {}}, extra);
+        t: s => s, _updatePanelButtonsActiveState() {}, _applyVerticalSearchLabel() {}, _clearVerticalSearchLabel() {}}, extra);
     return {app, calls, context};
 }
 
@@ -69,12 +70,15 @@ test('box width follows the panel thickness', () => {
     assert.equal(a.searchPanelButton.width, Math.round(40 * 4.9));
     assert.equal(b.searchPanelButton.width, Math.round(64 * 4.9));
 });
-test('vertical panels cannot host a text box: fall back to the icon', () => {
+test('vertical panels cannot host a text box: it is disabled and the vertical icon + label is shown', () => {
     const {app} = harness({searchDisplay: 'box', _orientation: 0});
+    Object.assign(app, {_applyVerticalSearchLabel() {}, _clearVerticalSearchLabel() {}});
+    app.searchPanelButton.set_vertical = function (v) {this.vertical = v;};
+    app.searchPanelButton.set_x_align = () => {};
     app._updateSearchPanelButton();
     assert.equal(app.searchPanelEntry.visible, false);
-    assert.equal(app.searchPanelLabel.visible, false);
-    assert.equal(app.searchPanelButton.width, -1);
+    assert.equal(app.searchPanelLabel.visible, true);
+    assert.equal(app.searchPanelButton.vertical, true);
 });
 test('unknown values behave as pill', () => {
     const {app} = harness({searchDisplay: 'weird'});

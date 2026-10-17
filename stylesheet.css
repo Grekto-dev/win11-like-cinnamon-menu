@@ -718,3 +718,9 @@
     font-size: 11pt;
     font-weight: bold;
 }
+
+/* Taskbar search in a vertical panel: icon on top, rotated label below */
+.win11-search-panel-pill-vertical {
+    padding: 12px 0;
+    spacing: 8px;
+}
