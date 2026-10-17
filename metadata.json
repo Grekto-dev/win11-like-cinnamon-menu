@@ -1,6 +1,7 @@
 {
     "uuid": "win11-menu@cinnamon",
-    "name": "Windows 11 Menu & Search",
+    "name": "Win11-Like CInnamon Menu",
+    "website": "https://github.com/Grekto-dev/win11-like-cinnamon-menu",
     "description": "Windows 11 Start Menu and Taskbar Search with Cinnamon theme integration",
     "icon": "linuxmint-logo-ring-symbolic",
     "max-instances": -1

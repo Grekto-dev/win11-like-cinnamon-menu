@@ -1,4 +1,6 @@
-# Windows 11 Menu & Search Applet for Cinnamon (`win11-menu@cinnamon`)
+# Win11-Like CInnamon Menu
+
+The applet keeps its original internal identifier, `win11-menu@cinnamon`, so existing installations and settings remain compatible.
 
 A modern desktop applet for the **Cinnamon Desktop Environment** (Linux Mint and other distributions) that faithfully recreates the **Windows 11 Start Menu and Taskbar Search**, while adhering to your active Cinnamon theme and keeping the official Linux Mint identity.
 
@@ -62,7 +64,7 @@ A modern desktop applet for the **Cinnamon Desktop Environment** (Linux Mint and
 Run the following command in your terminal:
 
 ```bash
-git clone https://github.com/Grekto-dev/win11-menu.git ~/.local/share/cinnamon/applets/win11-menu@cinnamon
+git clone https://github.com/Grekto-dev/win11-like-cinnamon-menu.git ~/.local/share/cinnamon/applets/win11-menu@cinnamon
 ```
 
 ### Option 2: Manual Installation
@@ -79,7 +81,7 @@ git clone https://github.com/Grekto-dev/win11-menu.git ~/.local/share/cinnamon/a
 ## ⚙️ Enabling & Configuring the Applet
 
 1. Right-click on your Cinnamon panel and click **"Applets"** (or open *System Settings -> Applets*).
-2. Under the **"Manage"** tab, locate **"Windows 11 Menu & Search"**.
+2. Under the **"Manage"** tab, locate **"Win11-Like CInnamon Menu"**.
 3. Select it and click the **"+"** button to add it to your panel.
 4. Click the gear icon next to the applet or right-click the panel icon and choose **"Configure..."** to customize:
    - Language (English or PT-BR)
