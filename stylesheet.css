@@ -186,7 +186,9 @@
 }
 
 .win11-pinned-tile {
-    padding: 6px 4px 4px 4px;
+    /* Reserve the merge outline without shifting the existing icon/label. */
+    padding: 5px 3px 3px 3px;
+    border: 1px solid transparent;
     spacing: 5px;
     border-radius: 6px;
     transition-duration: 120ms;
@@ -199,7 +201,7 @@
 
 .win11-pinned-tile-folder-target {
     background-color: rgba(150, 150, 165, 0.30);
-    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-color: rgba(255, 255, 255, 0.35);
     border-radius: 10px;
 }
 

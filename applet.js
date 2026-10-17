@@ -388,8 +388,8 @@ class PinnedTile {
         this.applet._onPinnedTileDragEnd(this, false);
     }
 
-    _onDragEnd() {
-        this.applet._onPinnedTileDragEnd(this, true);
+    _onDragEnd(draggable, time, success) {
+        this.applet._onPinnedTileDragEnd(this, success);
     }
 
     destroy() {
@@ -467,8 +467,8 @@ class FolderAppTile {
         this._signals.connect(this._draggable, 'drag-cancelled', () => {
             this.applet._onFolderTileDragEnd(this);
         });
-        this._signals.connect(this._draggable, 'drag-end', () => {
-            this.applet._onFolderTileDragEnd(this);
+        this._signals.connect(this._draggable, 'drag-end', (draggable, time, success) => {
+            this.applet._onFolderTileDragEnd(this, success);
         });
     }
 
@@ -606,6 +606,7 @@ class Win11PopupMenu extends Applet.AppletPopupMenu {
     }
 
     _onKeyPressEvent(actor, event) {
+        if (DND.isDragging()) return Clutter.EVENT_PROPAGATE;
         if (event.get_key_symbol() === Clutter.KEY_Escape) {
             if (this.launcher && this.launcher._handleEscapeKey()) {
                 return Clutter.EVENT_STOP;
@@ -1042,6 +1043,8 @@ class Win11MenuApplet extends Applet.TextIconApplet {
     }
 
     on_applet_removed_from_panel() {
+        this._destroying = true;
+        this._cancelTransientInteractions();
         Main.keybindingManager.removeXletHotKey(this, "overlay-key");
     }
 
@@ -1919,54 +1922,43 @@ class Win11MenuApplet extends Applet.TextIconApplet {
     }
 
     /* =====================================================================
-     * FOLDER OVERLAY MODAL (Rename with "Nova Pasta" pre-selected + Grid + Drag out)
+     * FOLDER OVERLAY (Explicit title editing + Reorder + Drag out)
      * ===================================================================== */
     _buildFolderOverlay() {
-        this.folderOverlay = new St.BoxLayout({
-            vertical: true,
+        this.folderOverlay = new St.Widget({
+            layout_manager: new Clutter.BinLayout(),
             style_class: 'win11-folder-overlay',
             reactive: true,
             x_expand: true,
             y_expand: true,
-            x_align: Clutter.ActorAlign.CENTER,
-            y_align: Clutter.ActorAlign.CENTER,
+            x_align: Clutter.ActorAlign.FILL,
+            y_align: Clutter.ActorAlign.FILL,
             visible: false
         });
 
-        // Clicking outside the folder card (or dropping a folder item on the backdrop)
+        // The backdrop catches clicks, but forwards folder drags to the visible
+        // root grid using pointer coordinates (not the offset floating icon).
         this.folderOverlay._delegate = {
             handleDragOver: (source, actor, x, y, time) => {
-                if (source instanceof FolderAppTile) {
-                    let [r, cardX, cardY] = this.folderCard.transform_stage_point(
-                        actor.x + actor.width / 2,
-                        actor.y + actor.height / 2
-                    );
-                    if (cardX < 0 || cardY < 0 || cardX > this.folderCard.width || cardY > this.folderCard.height) {
-                        return DND.DragMotionResult.MOVE_DROP;
-                    }
-                }
-                return DND.DragMotionResult.CONTINUE;
+                if (!(source instanceof FolderAppTile)) return DND.DragMotionResult.NO_DROP;
+                const [stageX, stageY] = global.get_pointer();
+                const point = this._folderRootDropPoint(stageX, stageY);
+                if (point) return this._handlePinnedGridDragOver(source, actor, point[0], point[1], time);
+                this._handlePinnedGridDragOut();
+                return DND.DragMotionResult.NO_DROP;
             },
             acceptDrop: (source, actor, x, y, time) => {
-                if (source instanceof FolderAppTile) {
-                    Meta.later_add(Meta.LaterType.BEFORE_REDRAW, () => {
-                        this._removeAppFromFolder(source.folderData.id, source.appId, true);
-                        return false;
-                    });
-                    return true;
-                }
-                return false;
+                if (!(source instanceof FolderAppTile)) return false;
+                const [stageX, stageY] = global.get_pointer();
+                const point = this._folderRootDropPoint(stageX, stageY);
+                return point ? this._acceptPinnedGridDrop(source, actor, point[0], point[1], time) : false;
             }
         };
 
         this.folderOverlay.connect('button-release-event', (actor, event) => {
             let src = event.get_source();
             if (src === this.folderOverlay) {
-                if (this._folderRenaming) {
-                    this._commitFolderRename();
-                } else {
-                    this._closeFolder();
-                }
+                this._closeFolder();
                 return Clutter.EVENT_STOP;
             }
             return Clutter.EVENT_PROPAGATE;
@@ -2059,6 +2051,27 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this.folderOverlay.add_actor(this.folderCard);
     }
 
+    _folderRootDropPoint(stageX, stageY) {
+        const [cardOk, cardX, cardY] = this.folderCard.transform_stage_point(stageX, stageY);
+        if (cardOk && cardX >= 0 && cardY >= 0 && cardX <= this.folderCard.width && cardY <= this.folderCard.height)
+            return null;
+        const [ok, x, y] = this.pinnedGridActor.transform_stage_point(stageX, stageY);
+        if (!ok || x < 0 || y < 0 || x > this.pinnedGridActor.width || y > this.pinnedGridActor.height)
+            return null;
+        return [x, y];
+    }
+
+    _animateActor(actor, properties, duration = 150, onComplete = null) {
+        actor.remove_all_transitions();
+        if (this.enableAnimation) {
+            actor.ease(Object.assign({}, properties, { duration,
+                mode: Clutter.AnimationMode.EASE_OUT_QUAD, onComplete }));
+        } else {
+            Object.assign(actor, properties);
+            if (onComplete) onComplete();
+        }
+    }
+
     _openFolder(folderId, startInRenameMode = false) {
         let folderData = (this.pinnedItems || []).find(item => item.type === 'folder' && item.id === folderId);
         if (!folderData)
@@ -2073,7 +2086,15 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this.folderTitleEntry.set_text(folderName);
 
         this._rebuildFolderGrid(folderData);
+        this._folderAnimationSerial = (this._folderAnimationSerial || 0) + 1;
+        this.folderCard.remove_all_transitions();
+        this.folderCard.set_pivot_point(0.5, 0.5);
+        this.folderCard.opacity = this.enableAnimation ? 0 : 255;
+        this.folderCard.scale_x = this.enableAnimation ? 0.92 : 1;
+        this.folderCard.scale_y = this.enableAnimation ? 0.92 : 1;
         this.folderOverlay.show();
+        // Approximate the reference's short expansion; not measured Windows easing.
+        this._animateActor(this.folderCard, { opacity: 255, scale_x: 1, scale_y: 1 }, 170);
 
         if (startInRenameMode) {
             this._enterFolderRenameMode();
@@ -2084,7 +2105,29 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         }
     }
 
+    _cancelFolderRenameTimers() {
+        (this._folderRenameTimers || []).forEach(id => Mainloop.source_remove(id));
+        this._folderRenameTimers = [];
+    }
+
+    _cancelTransientInteractions() {
+        this._cancelFolderRenameTimers();
+        this._handlePinnedGridDragOut();
+        this._stopDndTracking();
+        if (this._dndCompletionTimer) Mainloop.source_remove(this._dndCompletionTimer);
+        this._dndCompletionTimer = 0;
+        this._pendingDndCommit = null;
+        this._dragState = null;
+        this._folderDragState = null;
+        if (!DND.isDragging()) this._activeDndSource = null;
+        this._folderAnimationSerial = (this._folderAnimationSerial || 0) + 1;
+        for (const tile of [...(this._pinnedTiles || []), ...(this._folderTiles || [])])
+            if (tile.actor) tile.actor.remove_all_transitions();
+        if (this.folderCard) this.folderCard.remove_all_transitions();
+    }
+
     _enterFolderRenameMode() {
+        this._cancelFolderRenameTimers();
         let folderData = (this.pinnedItems || []).find(item => item.type === 'folder' && item.id === this._openFolderId);
         if (!folderData)
             return;
@@ -2108,11 +2151,17 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         };
 
         focusAndSelectAll();
-        Mainloop.timeout_add(25, focusAndSelectAll);
-        Mainloop.timeout_add(90, focusAndSelectAll);
+        [25, 90].forEach(delay => {
+            let id = Mainloop.timeout_add(delay, () => {
+                this._folderRenameTimers = this._folderRenameTimers.filter(timer => timer !== id);
+                return focusAndSelectAll();
+            });
+            this._folderRenameTimers.push(id);
+        });
     }
 
     _commitFolderRename(cancel = false) {
+        this._cancelFolderRenameTimers();
         if (!this._folderRenaming)
             return;
         this._folderRenaming = false;
@@ -2127,22 +2176,44 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             this.folderTitleLabel.set_text(folderData.name);
         }
 
+        // Hiding the focused entry otherwise makes PopupMenuManager dismiss
+        // the whole Start menu via notify::key-focus.
+        if (this.menu && this.menu.isOpen) this.menu.actor.grab_key_focus();
         this.folderTitleEntry.hide();
         this.folderTitleBtn.show();
         this._refreshPinnedSection();
     }
 
     _closeFolder() {
-        if (this._folderRenaming) {
-            this._commitFolderRename();
-        }
+        if (this.menu && this.menu.isOpen) this.menu.actor.grab_key_focus();
+        if (this._folderRenaming) this._commitFolderRename();
+        this._cancelTransientInteractions();
+        this._resetPinnedTilesPositions();
         this._openFolderId = null;
-        this.folderOverlay.hide();
-        this._folderTiles.forEach(t => t.destroy());
-        this._folderTiles = [];
+        const serial = this._folderAnimationSerial = (this._folderAnimationSerial || 0) + 1;
+        const finish = () => {
+            if (this._folderAnimationSerial !== serial || this._openFolderId) return;
+            this.folderOverlay.hide();
+            if (this._activeDndSource instanceof FolderAppTile) {
+                this._deferredFolderRefresh = true;
+                this._scheduleDndCompletion();
+            } else {
+                this._folderTiles.forEach(t => t.destroy());
+                this._folderTiles = [];
+            }
+        };
+        if (this.folderOverlay.visible)
+            this._animateActor(this.folderCard, { opacity: 0, scale_x: 0.94, scale_y: 0.94 }, 140, finish);
+        else finish();
     }
 
     _rebuildFolderGrid(folderData) {
+        if (this._activeDndSource instanceof FolderAppTile) {
+            this._deferredFolderRefresh = true;
+            return;
+        }
+        const previous = new Map(this._folderTiles.filter(t => t.actor && t.folderData.id === folderData.id)
+            .map(t => [t.appId, { x: t.actor.x, y: t.actor.y }]));
         this._folderTiles.forEach(t => t.destroy());
         this._folderTiles = [];
         this.folderGridActor.destroy_all_children();
@@ -2155,20 +2226,38 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             let tile = new FolderAppTile(this, folderData, appId, idx);
             this._folderTiles.push(tile);
             this.folderGridActor.add_actor(tile.actor);
+            const from = previous.get(appId);
+            if (this.enableAnimation && from && (from.x !== tile.currentX || from.y !== tile.currentY)) {
+                tile.actor.set_position(from.x, from.y);
+                this._animateActor(tile.actor, { x: tile.currentX, y: tile.currentY }, 150);
+            }
         });
     }
 
     _onFolderTileDragBegin(tile) {
+        this._handlePinnedGridDragOut();
+        this._startDndTracking(tile);
         this._folderDragState = {
             sourceIndex: tile.index,
             previewSlot: tile.index
         };
-        tile.actor.opacity = 65;
+        tile.actor.opacity = 0;
     }
 
-    _onFolderTileDragEnd(tile) {
-        if (tile && tile.actor)
-            tile.actor.opacity = 255;
+    _onFolderTileDragEnd(tile, success = false) {
+        this._handlePinnedGridDragOut();
+        this._stopDndTracking();
+        if (!success) this._pendingDndCommit = null;
+        this._scheduleDndCompletion();
+        if (tile && tile.actor) tile.actor.opacity = 255;
+        if (!success) {
+            this._folderTiles.forEach(t => {
+                t.currentSlot = t.index;
+                t.currentX = (t.index % FOLDER_COLS) * FOLDER_CELL_W;
+                t.currentY = Math.floor(t.index / FOLDER_COLS) * FOLDER_CELL_H;
+                this._animateActor(t.actor, { x: t.currentX, y: t.currentY }, 150);
+            });
+        }
         this._folderDragState = null;
     }
 
@@ -2203,12 +2292,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
                     t.currentSlot = newSlot;
                     t.currentX = (newSlot % FOLDER_COLS) * FOLDER_CELL_W;
                     t.currentY = Math.floor(newSlot / FOLDER_COLS) * FOLDER_CELL_H;
-                    t.actor.ease({
-                        x: t.currentX,
-                        y: t.currentY,
-                        duration: 150,
-                        mode: Clutter.AnimationMode.EASE_OUT_QUAD
-                    });
+                    this._animateActor(t.actor, { x: t.currentX, y: t.currentY }, 150);
                 }
             });
         }
@@ -2218,52 +2302,52 @@ class Win11MenuApplet extends Applet.TextIconApplet {
     _acceptFolderGridDrop(source, actor, x, y, time) {
         if (!(source instanceof FolderAppTile) || !this._folderDragState)
             return false;
-
-        let srcIdx = this._folderDragState.sourceIndex;
-        let dstIdx = this._folderDragState.previewSlot;
-        let folderData = source.folderData;
-
-        Meta.later_add(Meta.LaterType.BEFORE_REDRAW, () => {
-            if (srcIdx !== dstIdx && folderData && folderData.apps) {
-                let [moved] = folderData.apps.splice(srcIdx, 1);
-                folderData.apps.splice(dstIdx, 0, moved);
+        const slot = this._folderDragState.previewSlot;
+        const folderId = source.folderData.id;
+        const appId = source.appId;
+        // Resolve after DND finishes: saving replaces the entire settings tree.
+        return this._queueDndCommit(source, () => {
+            const folder = this.pinnedItems.find(item => item.type === 'folder' && item.id === folderId);
+            const index = folder ? folder.apps.indexOf(appId) : -1;
+            if (index >= 0 && index !== slot) {
+                folder.apps.splice(index, 1);
+                folder.apps.splice(slot, 0, appId);
                 this._savePinnedItems();
-                this._rebuildFolderGrid(folderData);
+                const current = this.pinnedItems.find(item => item.id === folderId);
+                if (this._openFolderId === folderId) this._rebuildFolderGrid(current);
                 this._refreshPinnedSection();
-            } else if (source.actor) {
-                source.actor.opacity = 255;
             }
-            return false;
         });
-        return true;
     }
 
-    _removeAppFromFolder(folderId, appId, keepOnPinnedGrid = true) {
+    _removeAppFromFolder(folderId, appId, keepOnPinnedGrid = true, pinnedSlot = null, persist = true) {
         let folderIdx = (this.pinnedItems || []).findIndex(item => item.type === 'folder' && item.id === folderId);
         if (folderIdx === -1)
             return;
 
         let folderData = this.pinnedItems[folderIdx];
-        folderData.apps = (folderData.apps || []).filter(id => id !== appId);
+        if (!(folderData.apps || []).includes(appId))
+            return false;
+        folderData.apps = folderData.apps.filter(id => id !== appId);
+        let slot = pinnedSlot === null ? folderIdx + 1 : pinnedSlot;
 
-        if (keepOnPinnedGrid) {
-            this.pinnedItems.splice(folderIdx + 1, 0, { type: 'app', id: appId });
-        }
-
-        // If 1 or 0 apps remain in the folder, dissolve the folder just like Windows 11
-        if (folderData.apps.length === 1) {
-            let remainingAppId = folderData.apps[0];
-            this.pinnedItems[folderIdx] = { type: 'app', id: remainingAppId };
-            this._closeFolder();
-        } else if (folderData.apps.length === 0) {
+        // A single app is still a folder. Only the final extraction removes it.
+        if (folderData.apps.length === 0) {
             this.pinnedItems.splice(folderIdx, 1);
-            this._closeFolder();
+            if (slot > folderIdx) slot--;
+            if (this._openFolderId === folderId) this._closeFolder();
         } else if (this._openFolderId === folderId) {
             this._rebuildFolderGrid(folderData);
         }
+        if (keepOnPinnedGrid && !this.pinnedItems.some(item => item.type === 'app' && item.id === appId)) {
+            slot = Math.max(0, Math.min(this.pinnedItems.length, slot));
+            this.pinnedItems.splice(slot, 0, { type: 'app', id: appId });
+        }
 
-        this._savePinnedItems();
-        this._refreshPinnedSection();
+        if (persist) {
+            this._savePinnedItems();
+            this._refreshPinnedSection();
+        }
     }
 
     /* =====================================================================
@@ -2579,10 +2663,8 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             for (let item of this.pinnedItems) {
                 if (item.type === 'folder' && Array.isArray(item.apps)) {
                     let validApps = item.apps.filter(id => appsys.lookup_app(id) != null);
-                    if (validApps.length >= 2) {
+                    if (validApps.length >= 1) {
                         cleaned.push({ type: 'folder', id: item.id, name: item.name, apps: validApps });
-                    } else if (validApps.length === 1) {
-                        cleaned.push({ type: 'app', id: validApps[0] });
                     }
                 } else if (item.type === 'app' && appsys.lookup_app(item.id) != null) {
                     cleaned.push({ type: 'app', id: item.id });
@@ -2672,6 +2754,10 @@ class Win11MenuApplet extends Applet.TextIconApplet {
     }
 
     _refreshPinnedSection() {
+        if (this._activeDndSource instanceof PinnedTile) {
+            this._deferredPinnedRefresh = true;
+            return;
+        }
         if (!this.pinnedGridActor)
             return;
 
@@ -2684,6 +2770,8 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             this.pinnedToggleBtnIcon.set_icon_name('xsi-go-down-symbolic');
         }
 
+        const previous = new Map(this._pinnedTiles.filter(t => t.actor)
+            .map(t => [t.itemData.id, { x: t.actor.x, y: t.actor.y }]));
         this._pinnedTiles.forEach(t => t.destroy());
         this._pinnedTiles = [];
         this.pinnedGridActor.destroy_all_children();
@@ -2699,21 +2787,66 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             let tile = new PinnedTile(this, items[i], i);
             this._pinnedTiles.push(tile);
             this.pinnedGridActor.add_actor(tile.actor);
+            const from = previous.get(items[i].id);
+            if (this.enableAnimation && from && (from.x !== tile.currentX || from.y !== tile.currentY)) {
+                tile.actor.set_position(from.x, from.y);
+                this._animateActor(tile.actor, { x: tile.currentX, y: tile.currentY }, 150);
+            }
         }
     }
 
+    _startDndTracking(source) {
+        if (this._dndMonitor) return;
+        // Cinnamon's DND handler is outside the menu actor. The menu manager
+        // must not swallow its Escape/release events while DND owns the grab.
+        if (this.menu) this.menu.passEvents = true;
+        this._activeDndSource = source;
+        this._dndMonitor = {
+            dragMotion: event => {
+                if (event.source !== source) return DND.DragMotionResult.CONTINUE;
+                let point;
+                if (source instanceof FolderAppTile) {
+                    point = this._folderRootDropPoint(event.x, event.y);
+                } else if (this.pinnedGridActor) {
+                    const [ok, x, y] = this.pinnedGridActor.transform_stage_point(event.x, event.y);
+                    if (ok && x >= 0 && y >= 0 && x <= this.pinnedGridActor.width && y <= this.pinnedGridActor.height)
+                        point = [x, y];
+                }
+                if (point) {
+                    this._handlePinnedGridDragOver(source, event.dragActor, point[0], point[1], 0);
+                } else {
+                    this._handlePinnedGridDragOut();
+                    this._resetPinnedTilesPositions();
+                    if (source instanceof FolderAppTile) this._dragState = null;
+                }
+                return DND.DragMotionResult.CONTINUE;
+            }
+        };
+        DND.addDragMonitor(this._dndMonitor);
+    }
+
+    _stopDndTracking() {
+        if (this._dndMonitor) DND.removeDragMonitor(this._dndMonitor);
+        this._dndMonitor = null;
+        if (!DND.isDragging() && this.menu) this.menu.passEvents = false;
+    }
+
     _onPinnedTileDragBegin(tile) {
+        this._handlePinnedGridDragOut();
+        this._startDndTracking(tile);
         this._dragState = {
             sourceIndex: tile.index,
             previewSlot: tile.index,
-            folderTargetIndex: -1,
-            hoverEdgeSlot: -1,
-            hoverEdgeStartTime: 0
+            folderTargetIndex: -1
         };
-        tile.actor.opacity = 60;
+        tile.actor.opacity = 0;
     }
 
     _onPinnedTileDragEnd(tile, success) {
+        this._handlePinnedGridDragOut();
+        this._stopDndTracking();
+        if (!success) this._pendingDndCommit = null;
+        this._scheduleDndCompletion();
         this._pinnedTiles.forEach(t => {
             t.setFolderDropTarget(false);
             if (t.actor)
@@ -2731,106 +2864,74 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             t.currentX = (t.index % PINNED_COLS) * PINNED_CELL_W;
             t.currentY = Math.floor(t.index / PINNED_COLS) * PINNED_CELL_H;
             if (t.actor) {
-                t.actor.ease({
-                    x: t.currentX,
-                    y: t.currentY,
-                    duration: 150,
-                    mode: Clutter.AnimationMode.EASE_OUT_QUAD
-                });
+                this._animateActor(t.actor, { x: t.currentX, y: t.currentY }, 150);
             }
         });
     }
 
     _handlePinnedGridDragOut() {
+        if (this._pinnedHoverTimer) Mainloop.source_remove(this._pinnedHoverTimer);
+        this._pinnedHoverTimer = 0;
+        this._pinnedHover = null;
         this._pinnedTiles.forEach(t => t.setFolderDropTarget(false));
-        if (this._dragState) {
-            this._dragState.folderTargetIndex = -1;
-        }
+        this._externalFolderTargetIndex = -1;
+        if (this._dragState) this._dragState.folderTargetIndex = -1;
     }
 
     _handlePinnedGridDragOver(source, actor, x, y, time) {
-        let isPinnedTile = source instanceof PinnedTile;
-        let isExternalApp = !isPinnedTile && source && source.app;
-
-        if (!isPinnedTile && !isExternalApp)
+        let isPinned = source instanceof PinnedTile;
+        let isFolderApp = source instanceof FolderAppTile;
+        if (!isPinned && !isFolderApp && !(source && source.app))
             return DND.DragMotionResult.NO_DROP;
-
-        if (isPinnedTile && !this._dragState) {
-            this._dragState = {
-                sourceIndex: source.index,
-                previewSlot: source.index,
-                folderTargetIndex: -1,
-                hoverEdgeSlot: -1,
-                hoverEdgeStartTime: 0
-            };
+        if (!isPinned && !isFolderApp && !this._dndMonitor) {
+            this._startDndTracking(source);
+            this._scheduleDndCompletion();
         }
 
-        let canMergeFolder = isExternalApp || (isPinnedTile && source.itemData.type === 'app');
-
-        // 1. Check if cursor is directly over the icon center of any other visible tile -> Folder Creation / Merge Target!
-        let foundFolderTarget = null;
-        if (canMergeFolder) {
-            for (let t of this._pinnedTiles) {
-                if (isPinnedTile && t.index === source.index)
-                    continue;
-                let iconLeft = t.currentX + 17;
-                let iconRight = t.currentX + PINNED_CELL_W - 17;
-                let iconTop = t.currentY + 6;
-                let iconBottom = t.currentY + 48;
-
-                if (x >= iconLeft && x <= iconRight && y >= iconTop && y <= iconBottom) {
-                    foundFolderTarget = t;
-                    break;
-                }
-            }
+        if (!this._dragState) {
+            this._dragState = { sourceIndex: isPinned ? source.index : -1,
+                previewSlot: isPinned ? source.index : this.pinnedItems.length,
+                folderTargetIndex: -1 };
         }
+        // Keep the hit-test snapshot until the pointer actually moves. A tile sliding
+        // underneath a stationary pointer must not turn an insertion into a merge.
+        if (this._pinnedHover && this._pinnedHover.source === source &&
+            Math.abs(x - this._pinnedHover.x) < 8 && Math.abs(y - this._pinnedHover.y) < 8)
+            return DND.DragMotionResult.MOVE_DROP;
 
-        if (foundFolderTarget) {
-            this._pinnedTiles.forEach(t => t.setFolderDropTarget(t === foundFolderTarget));
-            if (this._dragState) {
-                this._dragState.folderTargetIndex = foundFolderTarget.index;
-                this._dragState.hoverEdgeSlot = -1;
-            }
-            this._externalFolderTargetIndex = foundFolderTarget.index;
-            return DND.DragMotionResult.COPY_DROP;
-        }
-
-        // 2. Otherwise, we are in Auto-Arrange / Reorder zone!
-        this._pinnedTiles.forEach(t => t.setFolderDropTarget(false));
-        this._externalFolderTargetIndex = -1;
-
-        if (!isPinnedTile) {
-            return DND.DragMotionResult.COPY_DROP;
-        }
-
-        this._dragState.folderTargetIndex = -1;
-
+        this._handlePinnedGridDragOut();
+        let canMerge = !isPinned || source.itemData.type === 'app';
+        let target = canMerge ? this._pinnedTiles.find(t => t !== source &&
+            !(isFolderApp && t.itemData.id === source.folderData.id) &&
+            x >= t.currentX + 17 && x <= t.currentX + PINNED_CELL_W - 17 &&
+            y >= t.currentY + 6 && y <= t.currentY + 48) : null;
         let col = Math.max(0, Math.min(PINNED_COLS - 1, Math.floor(x / PINNED_CELL_W)));
         let row = Math.max(0, Math.floor(y / PINNED_CELL_H));
-        let targetSlot = Math.max(0, Math.min(this._pinnedTiles.length - 1, row * PINNED_COLS + col));
-
-        if (targetSlot !== this._dragState.previewSlot) {
-            let now = GLib.get_monotonic_time() / 1000; // ms
-            if (this._dragState.hoverEdgeSlot !== targetSlot) {
-                this._dragState.hoverEdgeSlot = targetSlot;
-                this._dragState.hoverEdgeStartTime = now;
-                return DND.DragMotionResult.MOVE_DROP;
+        let slot = Math.max(0, Math.min(this._pinnedTiles.length - (isPinned ? 1 : 0), row * PINNED_COLS + col));
+        const state = this._dragState;
+        this._pinnedHover = { source, x, y };
+        this._pinnedHoverTimer = Mainloop.timeout_add(target ? 420 : 75, () => {
+            this._pinnedHoverTimer = 0;
+            if (this._dragState !== state) return false;
+            if (target) {
+                state.folderTargetIndex = target.index;
+                this._externalFolderTargetIndex = target.index;
+                this._pinnedTiles.forEach(t => t.setFolderDropTarget(t === target));
+            } else {
+                state.previewSlot = slot;
+                this._animatePinnedAutoArrange(state.sourceIndex, slot);
             }
-            if (now - this._dragState.hoverEdgeStartTime < 75) {
-                return DND.DragMotionResult.MOVE_DROP;
-            }
-
-            this._dragState.previewSlot = targetSlot;
-            this._animatePinnedAutoArrange(this._dragState.sourceIndex, targetSlot);
-        }
-
+            return false;
+        });
         return DND.DragMotionResult.MOVE_DROP;
     }
 
     _animatePinnedAutoArrange(sourceIndex, targetSlot) {
         this._pinnedTiles.forEach(t => {
             let newSlot = t.index;
-            if (t.index === sourceIndex) {
+            if (sourceIndex < 0) {
+                newSlot = t.index >= targetSlot ? t.index + 1 : t.index;
+            } else if (t.index === sourceIndex) {
                 newSlot = targetSlot;
             } else if (sourceIndex < targetSlot && t.index > sourceIndex && t.index <= targetSlot) {
                 newSlot = t.index - 1;
@@ -2842,72 +2943,93 @@ class Win11MenuApplet extends Applet.TextIconApplet {
                 t.currentSlot = newSlot;
                 t.currentX = (newSlot % PINNED_COLS) * PINNED_CELL_W;
                 t.currentY = Math.floor(newSlot / PINNED_COLS) * PINNED_CELL_H;
-                t.actor.ease({
-                    x: t.currentX,
-                    y: t.currentY,
-                    duration: 160,
-                    mode: Clutter.AnimationMode.EASE_OUT_QUAD
-                });
+                this._animateActor(t.actor, { x: t.currentX, y: t.currentY }, 150);
             }
         });
     }
 
-    _acceptPinnedGridDrop(source, actor, x, y, time) {
-        let isPinnedTile = source instanceof PinnedTile;
-        let isExternalApp = !isPinnedTile && source && source.app;
+    _queueDndCommit(source, commit) {
+        if (this._pendingDndCommit) return false;
+        this._activeDndSource = source;
+        this._pendingDndCommit = commit;
+        this._scheduleDndCompletion();
+        return true;
+    }
 
-        if (!isPinnedTile && !isExternalApp)
-            return false;
-
-        this._pinnedTiles.forEach(t => t.setFolderDropTarget(false));
-
-        if (isExternalApp) {
-            let appId = source.app.get_id();
-            let targetIdx = this._externalFolderTargetIndex !== undefined ? this._externalFolderTargetIndex : -1;
-            Meta.later_add(Meta.LaterType.BEFORE_REDRAW, () => {
-                if (targetIdx >= 0 && targetIdx < this.pinnedItems.length) {
-                    this._mergeAppIntoPinnedTarget(appId, -1, targetIdx);
-                } else if (!this.isAppPinned(appId)) {
-                    this.pinApp(appId);
+    _scheduleDndCompletion() {
+        if (this._destroying) return;
+        if (this._dndCompletionTimer) return;
+        // drag-end is emitted BEFORE Cinnamon releases its grab and source actor.
+        // Never rebuild either grid from acceptDrop or that signal's call stack.
+        this._dndCompletionTimer = Mainloop.timeout_add(16, () => {
+            if (DND.isDragging()) return true;
+            this._dndCompletionTimer = 0;
+            const commit = this._pendingDndCommit;
+            this._pendingDndCommit = null;
+            this._activeDndSource = null;
+            this._stopDndTracking();
+            this._handlePinnedGridDragOut();
+            if (!commit) this._resetPinnedTilesPositions();
+            this._dragState = null;
+            if (commit) commit();
+            if (this._deferredFolderRefresh) {
+                this._deferredFolderRefresh = false;
+                const folder = this.pinnedItems.find(item => item.type === 'folder' && item.id === this._openFolderId);
+                if (folder) this._rebuildFolderGrid(folder);
+                else {
+                    this._folderTiles.forEach(t => t.destroy());
+                    this._folderTiles = [];
                 }
-                return false;
-            });
-            return true;
-        }
-
-        if (!this._dragState)
-            return false;
-
-        let srcIdx = this._dragState.sourceIndex;
-        let dstSlot = this._dragState.previewSlot;
-        let folderTargetIdx = this._dragState.folderTargetIndex;
-
-        Meta.later_add(Meta.LaterType.BEFORE_REDRAW, () => {
-            if (folderTargetIdx !== -1 && folderTargetIdx !== srcIdx) {
-                let srcItem = this.pinnedItems[srcIdx];
-                if (srcItem && srcItem.type === 'app') {
-                    this._mergeAppIntoPinnedTarget(srcItem.id, srcIdx, folderTargetIdx);
-                }
-            } else if (dstSlot !== srcIdx && srcIdx >= 0 && srcIdx < this.pinnedItems.length) {
-                let [moved] = this.pinnedItems.splice(srcIdx, 1);
-                this.pinnedItems.splice(dstSlot, 0, moved);
-                this._savePinnedItems();
+            }
+            if (this._deferredPinnedRefresh) {
+                this._deferredPinnedRefresh = false;
                 this._refreshPinnedSection();
-            } else {
-                this._resetPinnedTilesPositions();
-                if (source.actor)
-                    source.actor.opacity = 255;
             }
             return false;
         });
+    }
 
-        return true;
+    _acceptPinnedGridDrop(source, actor, x, y, time) {
+        let isPinned = source instanceof PinnedTile;
+        let isFolderApp = source instanceof FolderAppTile;
+        if (!isPinned && !isFolderApp && !(source && source.app)) return false;
+        if (!this._dragState) return false;
+        const slot = this._dragState.previewSlot;
+        const target = this.pinnedItems[this._dragState.folderTargetIndex];
+        const targetId = target ? target.id : null;
+        const sourceId = isPinned ? source.itemData.id : isFolderApp ? source.appId : source.app.get_id();
+        const folderId = isFolderApp ? source.folderData.id : null;
+        this._handlePinnedGridDragOut();
+        return this._queueDndCommit(source, () => {
+            const folder = this.pinnedItems.find(item => item.type === 'folder' &&
+                (folderId ? item.id === folderId : (item.apps || []).includes(sourceId)));
+            if (isFolderApp && (!folder || !(folder.apps || []).includes(sourceId))) return;
+            if (folder && targetId === folder.id) return;
+            if (targetId && targetId !== sourceId && (!folder || targetId !== folder.id)) {
+                if (!this.pinnedItems.some(item => item.id === targetId)) return;
+                if (folder) this._removeAppFromFolder(folder.id, sourceId, false, null, false);
+                const targetIndex = this.pinnedItems.findIndex(item => item.id === targetId);
+                const sourceIndex = this.pinnedItems.findIndex(item => item.type === 'app' && item.id === sourceId);
+                this._mergeAppIntoPinnedTarget(sourceId, sourceIndex, targetIndex);
+            } else if (folder) {
+                this._removeAppFromFolder(folder.id, sourceId, true, slot);
+            } else {
+                const index = this.pinnedItems.findIndex(item => item.id === sourceId);
+                const item = index >= 0 ? this.pinnedItems.splice(index, 1)[0] : { type: 'app', id: sourceId };
+                this.pinnedItems.splice(Math.max(0, Math.min(this.pinnedItems.length, slot)), 0, item);
+                this._savePinnedItems();
+                this._refreshPinnedSection();
+            }
+        });
     }
 
     _mergeAppIntoPinnedTarget(sourceAppId, sourceIndex, targetIndex) {
         let targetItem = this.pinnedItems[targetIndex];
         if (!targetItem)
             return;
+        // All-apps drags are moves too when this app already exists at root.
+        if (sourceIndex < 0)
+            sourceIndex = this.pinnedItems.findIndex(item => item.type === 'app' && item.id === sourceAppId);
 
         if (targetItem.type === 'app') {
             if (targetItem.id === sourceAppId)
@@ -2925,12 +3047,6 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             }
             this._savePinnedItems();
             this._refreshPinnedSection();
-
-            // Open the newly created folder immediately in rename mode with "Nova Pasta" / "New Folder" pre-selected
-            Mainloop.timeout_add(35, () => {
-                this._openFolder(newFolderId, true);
-                return GLib.SOURCE_REMOVE;
-            });
         } else if (targetItem.type === 'folder') {
             if (!Array.isArray(targetItem.apps))
                 targetItem.apps = [];
@@ -2941,11 +3057,6 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             }
             this._savePinnedItems();
             this._refreshPinnedSection();
-
-            Mainloop.timeout_add(35, () => {
-                this._openFolder(targetItem.id, false);
-                return GLib.SOURCE_REMOVE;
-            });
         }
     }
 
@@ -4155,6 +4266,8 @@ class Win11MenuApplet extends Applet.TextIconApplet {
     }
 
     destroy() {
+        this._destroying = true;
+        this._cancelTransientInteractions();
         this.actor._delegate = null;
         this.menu.destroy();
         this.actor.destroy();
