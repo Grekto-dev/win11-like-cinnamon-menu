@@ -23,7 +23,7 @@ function harness(extra = {}) {
     Object.assign(app, {_orientation: 3, _panelHeight: 48, searchButtonSizeMode: 'auto', searchPillHeight: 30, searchButtonSpacing: 0,
         menuIconSizeMode: 'auto', actor: {set_style() {}, get_text_direction: () => 0},
         searchPanelButton: widget('button'), searchPanelLabel: widget('label'), searchPanelIcon: widget('icon'),
-        searchPanelEntry: widget('panelEntry'), searchEntry: widget('menuEntry'),
+        searchPanelEntry: widget('panelEntry'), searchPanelLabelBin: widget('bin'), searchEntry: widget('menuEntry'),
         t: s => s, _updatePanelButtonsActiveState() {}, _applyVerticalSearchLabel() {}, _clearVerticalSearchLabel() {}}, extra);
     return {app, calls, context};
 }

@@ -719,8 +719,12 @@
     font-weight: bold;
 }
 
-/* Taskbar search in a vertical panel: icon on top, rotated label below */
+/* Taskbar search in a vertical panel: icon on top, upright letters below */
 .win11-search-panel-pill-vertical {
     padding: 12px 0;
     spacing: 8px;
+}
+
+.win11-search-panel-pill-vertical .win11-search-panel-pill-label {
+    padding: 0;
 }

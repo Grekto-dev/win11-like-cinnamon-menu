@@ -711,11 +711,10 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             y_align: Clutter.ActorAlign.CENTER
         });
         this.searchPanelButton.add(this.searchPanelIcon, { y_align: St.Align.MIDDLE, y_fill: false });
-        // Plain widget (fixed layout): the rotated label must keep its natural size.
-        this.searchPanelLabelBin = new St.Widget({ style_class: 'win11-search-panel-label-bin' });
-        this.searchPanelLabelBin.add_child(this.searchPanelLabel);
+        // Natural layout accommodates both the horizontal word and the upright vertical letters.
+        this.searchPanelLabelBin = new St.Bin({ style_class: 'win11-search-panel-label-bin', x_fill: false, y_fill: false });
+        this.searchPanelLabelBin.set_child(this.searchPanelLabel);
         this.searchPanelLabel.connect('notify::visible', () => this.searchPanelLabelBin.visible = this.searchPanelLabel.visible);
-        this.searchPanelLabel.connect('notify::mapped', () => this._refreshVerticalSearchLabel());
         this.searchPanelButton.add(this.searchPanelLabelBin, { y_align: St.Align.MIDDLE, y_fill: false });
         // "Search box" mode: a real field. Inactive (not reactive, not editable) until clicked.
         this.searchPanelEntry = new St.Entry({
@@ -1005,7 +1004,12 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             : (this.actor.get_text_direction() === St.TextDirection.RTL ? 'left' : 'right');
         // Add the same extra space between Menu/Search and after Search.
         // Zero preserves the theme's original minimum; hiding Search resets it.
-        this.actor.set_style(`spacing: ${spacing}px; padding-${trailingEdge}: ${spacing}px;`);
+        const panelWidth = vertical && this.panel && this.panel.actor ? this.panel.actor.width : 0;
+        const widthStyle = panelWidth > 0 ? ` width: ${panelWidth / (global.ui_scale || 1)}px;` : '';
+        this.actor.set_style(`spacing: ${spacing}px; padding-${trailingEdge}: ${spacing}px;${widthStyle}`);
+        // Horizontal Start padding would otherwise make a 47px vertical bar's applet 54px wide.
+        if (this.startButtonBox)
+            this.startButtonBox.set_style(vertical ? 'padding: 0;' : null);
 
         if (mode === "hidden") {
             this.searchPanelButton.hide();
@@ -1047,7 +1051,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
                 this.searchPanelEntry.hide();
                 this.searchPanelLabel.show();
                 if (vertical)
-                    this._applyVerticalSearchLabel(this._orientation === St.Side.LEFT ? -90 : 90);
+                    this._applyVerticalSearchLabel();
                 else
                     this._clearVerticalSearchLabel();
             }
@@ -1060,8 +1064,12 @@ class Win11MenuApplet extends Applet.TextIconApplet {
                 pillH = Math.max(24, Math.min(ph - 6, Math.round(ph * 0.75)));
             }
 
+            // Keep the icon and upright letter column centred across the bar's thickness.
+            const across = vertical ? Clutter.ActorAlign.CENTER : Clutter.ActorAlign.FILL;
+            this.searchPanelIcon.set_x_align(across);
+            this.searchPanelLabelBin.set_x_align(across);
             if (vertical) {
-                // Stacked button: the pill thickness is its width and the length follows its content.
+                // The pill thickness is its width and the length follows its content.
                 this.searchPanelButton.set_width(pillH);
                 this.searchPanelButton.set_height(-1);
                 this.searchPanelButton.set_x_align(Clutter.ActorAlign.CENTER);
@@ -1081,37 +1089,17 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this._updatePanelButtonsActiveState();
     }
 
-    // Vertical panels: the label text is rotated so the icon + label button reads along the bar.
-    // Rotation does not change layout, so the wrapper bin gets the swapped (rotated) size.
-    _applyVerticalSearchLabel(angle) {
-        this._verticalLabelAngle = angle;
-        this.searchPanelLabel.set_pivot_point(0.5, 0.5);
-        this.searchPanelLabel.rotation_angle_z = angle;
-        this._refreshVerticalSearchLabel();
-    }
-
-    _refreshVerticalSearchLabel() {
-        const label = this.searchPanelLabel;
-        if (this._verticalLabelAngle === null || this._verticalLabelAngle === undefined || !label.get_stage())
-            return;
-        // An explicit size from an earlier pass would be returned as the "natural" size.
-        label.set_size(-1, -1);
-        const [, width] = label.get_preferred_width(-1);
-        const [, height] = label.get_preferred_height(-1);
-        // The wrapper has a fixed layout, so the label keeps its natural size (otherwise it would
-        // be squeezed into the rotated, narrow footprint and ellipsized). The label's centre is
-        // moved onto the wrapper's centre, which is the pivot of the rotation.
-        label.set_size(width, height);
-        label.set_position(Math.round((height - width) / 2), Math.round((width - height) / 2));
-        this.searchPanelLabelBin.set_size(height, width);
+    // One upright letter per line: readable from top to bottom on either vertical side.
+    _applyVerticalSearchLabel() {
+        this.searchPanelLabel.rotation_angle_z = 0;
+        this.searchPanelLabel.clutter_text.set_line_alignment(Pango.Alignment.CENTER);
+        this.searchPanelLabel.set_text(Array.from(this.t("search")).join("\n"));
     }
 
     _clearVerticalSearchLabel() {
-        this._verticalLabelAngle = null;
         this.searchPanelLabel.rotation_angle_z = 0;
-        this.searchPanelLabel.set_size(-1, -1);
-        this.searchPanelLabel.set_position(0, 0);
-        this.searchPanelLabelBin.set_size(-1, -1);
+        this.searchPanelLabel.clutter_text.set_line_alignment(Pango.Alignment.LEFT);
+        this.searchPanelLabel.set_text(this.t("search"));
     }
 
     /* =====================================================================

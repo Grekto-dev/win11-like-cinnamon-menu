@@ -78,22 +78,61 @@ function searchHarness(orientation, mode, extra = {}) {
         set_vertical(v) {this.vertical = v;}, set_hint_text() {}, set_reactive(v) {this.reactive = v;}});
     Object.assign(app, {_orientation: orientation, _panelHeight: 48, searchDisplay: mode, searchButtonSizeMode: 'auto', searchPillHeight: 30,
         searchButtonSpacing: 0, menuIconSizeMode: 'auto', actor: {set_style() {}, get_text_direction: () => 0},
-        searchPanelButton: w('button'), searchPanelLabel: w('label'), searchPanelIcon: w('icon'), searchPanelEntry: w('entry'),
+        searchPanelButton: w('button'), searchPanelLabel: w('label'), searchPanelIcon: w('icon'), searchPanelEntry: w('entry'), searchPanelLabelBin: w('bin'),
         t: s => s, _updatePanelButtonsActiveState() {},
-        _applyVerticalSearchLabel(angle) {calls.angle = angle;}, _clearVerticalSearchLabel() {calls.cleared = true;}}, extra);
+        _applyVerticalSearchLabel() {calls.verticalText = true;}, _clearVerticalSearchLabel() {calls.cleared = true;}}, extra);
     return {app, calls};
 }
-test('vertical panel + icon+label: the pill is stacked vertically with a rotated label', () => {
-    for (const [orientation, angle] of [[SIDE.LEFT, -90], [SIDE.RIGHT, 90]]) {
+test('vertical panel + icon+label: the pill is stacked vertically with upright letters', () => {
+    for (const orientation of [SIDE.LEFT, SIDE.RIGHT]) {
         const {app, calls} = searchHarness(orientation, 'pill');
         app._updateSearchPanelButton();
         assert.equal(app.searchPanelButton.vertical, true);
         assert.equal(app.searchPanelLabel.visible, true);
-        assert.equal(calls.angle, angle);
+        assert.equal(calls.verticalText, true);
         assert.equal(app.searchPanelEntry.visible, false);
         assert.equal(app.searchPanelButton.width, 36, 'the pill thickness is its width in a vertical bar');
         assert.equal(app.searchPanelButton.height, -1);
     }
+});
+test('vertical: the letter column and icon are centred across the bar', () => {
+    const {app} = searchHarness(SIDE.LEFT, 'pill');
+    const aligns = [];
+    app.searchPanelLabelBin = {set_x_align: a => aligns.push(['x', a]), set_y_align: a => aligns.push(['y', a])};
+    app.searchPanelIcon.set_x_align = a => aligns.push(['icon', a]);
+    app._updateSearchPanelButton();
+    assert.deepEqual(aligns.filter(a => a[0] === 'x'), [['x', 1]], 'Clutter.ActorAlign.CENTER');
+    assert.deepEqual(aligns.filter(a => a[0] === 'icon'), [['icon', 1]]);
+    const horizontal = searchHarness(SIDE.BOTTOM, 'pill');
+    const h = [];
+    horizontal.app.searchPanelLabelBin = {set_x_align: a => h.push(a), set_y_align() {}};
+    horizontal.app.searchPanelIcon.set_x_align = () => {};
+    horizontal.app._updateSearchPanelButton();
+    assert.deepEqual(h, [0], 'Clutter.ActorAlign.FILL again in a horizontal bar');
+});
+test('vertical controls use the actual panel width, without Start padding widening the bar', () => {
+    const {app} = searchHarness(SIDE.LEFT, 'pill');
+    const styles = [];
+    app.panel = {actor: {width: 47}};
+    app.startButtonBox = {set_style: s => styles.push(s)};
+    let rootStyle;
+    app.actor.set_style = s => rootStyle = s;
+    app._updateSearchPanelButton();
+    assert.match(rootStyle, /width: 47px/);
+    assert.deepEqual(styles, ['padding: 0;']);
+    app._orientation = SIDE.BOTTOM;
+    app._updateSearchPanelButton();
+    assert.doesNotMatch(rootStyle, /width:/);
+    assert.equal(styles.at(-1), null, 'horizontal theme padding restored');
+});
+test('vertical bars keep the extra Search gaps vertical: spacing between children and padding below, nothing sideways', () => {
+    const calls = [];
+    const {app} = searchHarness(SIDE.LEFT, 'pill', {searchButtonSpacing: 12});
+    app.actor.set_style = s => calls.push(s);
+    app._updateSearchPanelButton();
+    assert.match(calls[0], /spacing: 12px/);
+    assert.match(calls[0], /padding-bottom: 12px/);
+    assert.doesNotMatch(calls[0], /padding-(left|right)/);
 });
 test('vertical panel + search box: the box is disabled and the vertical icon+label is used instead', () => {
     const {app, calls} = searchHarness(SIDE.LEFT, 'box');
@@ -101,7 +140,7 @@ test('vertical panel + search box: the box is disabled and the vertical icon+lab
     app._updateSearchPanelButton();
     assert.equal(app.searchPanelEntry.visible, false);
     assert.equal(app.searchPanelLabel.visible, true);
-    assert.equal(calls.angle, -90);
+    assert.equal(calls.verticalText, true);
 });
 test('vertical panel + icon only: no label, normal icon button', () => {
     const {app} = searchHarness(SIDE.RIGHT, 'icon');
@@ -109,7 +148,7 @@ test('vertical panel + icon only: no label, normal icon button', () => {
     assert.equal(app.searchPanelLabel.visible, false);
     assert.equal(app.searchPanelButton.vertical, false);
 });
-test('horizontal panels restore the horizontal pill and drop the rotation', () => {
+test('horizontal panels restore the horizontal pill and word', () => {
     const {app, calls} = searchHarness(SIDE.BOTTOM, 'pill');
     app._updateSearchPanelButton();
     assert.equal(app.searchPanelButton.vertical, false);
@@ -124,53 +163,37 @@ test('the search box still works in a horizontal panel', () => {
     assert.equal(app.searchPanelButton.width, Math.round(48 * 4.9));
 });
 
-// ---- rotated label geometry ----
-function rotationHarness() {
-    const context = {Applet: {TextIconApplet: class {}}, global: {}, St: {Side: SIDE}};
+// ---- upright letters, one per line ----
+function labelHarness(text = 'Search') {
+    const context = {Applet: {TextIconApplet: class {}}, global: {}, St: {Side: SIDE},
+        Pango: {Alignment: {LEFT: 0, CENTER: 1}}};
     const Class = vm.runInNewContext(source.slice(source.indexOf('class Win11MenuApplet'), source.indexOf('\nfunction main')) + '\nWin11MenuApplet', context);
     const app = Object.create(Class.prototype);
-    const log = {};
-    app.searchPanelLabel = {rotation_angle_z: 0, get_stage: () => ({}), set_pivot_point(x, y) {log.pivot = [x, y];},
-        get_preferred_width: () => [0, 60], get_preferred_height: () => [0, 16],
-        set_size(w, h) {log.labelSize = [w, h];}, set_position(x, y) {log.labelPos = [x, y];}};
-    app.searchPanelLabelBin = {set_size(w, h) {log.binSize = [w, h];}};
-    return {app, log};
+    const label = {text: '', rotation_angle_z: 0, set_text(t) {this.text = t;},
+        set_pivot_point() {}, set_size() {}, set_position() {}, get_stage: () => null,
+        clutter_text: {set_line_alignment(v) {this.lineAlignment = v;}}};
+    Object.assign(app, {searchPanelLabel: label, searchPanelLabelBin: {set_size() {}}, t: () => text});
+    return {app, label};
 }
-test('the rotated label keeps its natural size (no ellipsis) inside a bin with swapped dimensions, centred', () => {
-    const {app, log} = rotationHarness();
-    app._applyVerticalSearchLabel(-90);
-    assert.equal(app.searchPanelLabel.rotation_angle_z, -90);
-    assert.deepEqual(log.pivot, [0.5, 0.5]);
-    assert.deepEqual(log.labelSize, [60, 16], 'natural width, so it is not truncated');
-    assert.deepEqual(log.binSize, [16, 60], 'the rotated footprint');
-    assert.deepEqual(log.labelPos, [-22, 22], 'the centres coincide');
+test('letters are upright and stacked top to bottom, not a rotated word', () => {
+    const {app, label} = labelHarness();
+    app._applyVerticalSearchLabel();
+    assert.equal(label.text, 'S\ne\na\nr\nc\nh');
+    assert.equal(label.rotation_angle_z, 0);
+    assert.equal(label.clutter_text.lineAlignment, 1, 'each line centred across the bar');
 });
-test('a changed label (language, font) is re-measured: the old fixed size is cleared before measuring', () => {
-    const {app, log} = rotationHarness();
-    const order = [];
-    const label = app.searchPanelLabel;
-    label.set_size = (w, h) => order.push(['set_size', w, h]);
-    label.get_preferred_width = () => {order.push(['measure']); return [0, 80];};
-    app._applyVerticalSearchLabel(-90);
-    assert.deepEqual(order[0], ['set_size', -1, -1]);
-    assert.deepEqual(order[1], ['measure']);
-    assert.deepEqual(order[order.length - 1], ['set_size', 80, 16]);
+test('language changes immediately rebuild the stacked label without a fixed footprint', () => {
+    const {app, label} = labelHarness();
+    app._applyVerticalSearchLabel();
+    app.t = () => 'Pesquisar';
+    app._applyVerticalSearchLabel();
+    assert.equal(label.text, 'P\ne\ns\nq\nu\ni\ns\na\nr');
 });
-test('clearing the rotation restores the natural layout', () => {
-    const {app, log} = rotationHarness();
-    app._applyVerticalSearchLabel(90);
+test('returning to a horizontal bar restores the original word and alignment', () => {
+    const {app, label} = labelHarness();
+    app._applyVerticalSearchLabel();
     app._clearVerticalSearchLabel();
-    assert.equal(app.searchPanelLabel.rotation_angle_z, 0);
-    assert.deepEqual(log.binSize, [-1, -1]);
-    assert.deepEqual(log.labelSize, [-1, -1]);
-    assert.deepEqual(log.labelPos, [0, 0]);
-});
-test('rotation is applied once the label is on stage', () => {
-    const {app, log} = rotationHarness();
-    app.searchPanelLabel.get_stage = () => null;
-    app._applyVerticalSearchLabel(90);
-    assert.equal(log.binSize, undefined, 'measuring an off-stage widget would only log criticals');
-    app.searchPanelLabel.get_stage = () => ({});
-    app._refreshVerticalSearchLabel();
-    assert.deepEqual(log.binSize, [16, 60]);
+    assert.equal(label.text, 'Search');
+    assert.equal(label.rotation_angle_z, 0);
+    assert.equal(label.clutter_text.lineAlignment, 0);
 });
