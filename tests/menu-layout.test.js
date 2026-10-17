@@ -167,7 +167,7 @@ test('three recent rows use equal tracks and bounded ellipsized labels for unequ
     Object.assign(context.St, {BoxLayout: Actor, Widget: Actor, Label: Actor, Icon: Actor, Align: {MIDDLE: 0}});
     Object.assign(context, {Clutter: {ActorAlign: {CENTER: 0}}, Pango: {EllipsizeMode: {END: 1}}});
     const fixtures = require('./fixtures/recent-items.js');
-    Object.assign(app, {showRecents: true, t: s => s,
+    Object.assign(app, {showRecentApps: true, showRecentFiles: true, t: s => s,
         _getCombinedRecentItems: () => fixtures,
         recentSectionBox: new Actor(), recentTitleLabel: new Actor(), recentMoreBtnLabel: new Actor(),
         allRecentSubTitle: new Actor(), allRecentBackLabel: new Actor(), recentGridBox: new Actor()});

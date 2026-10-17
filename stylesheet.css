@@ -87,6 +87,27 @@
     padding-right: 2px;
 }
 
+/* Taskbar Search Box mode: the field itself is transparent; the pill draws the frame. */
+.win11-search-panel-entry {
+    background-color: transparent;
+    background-gradient-direction: none;
+    border: 0;
+    border-image: none;
+    box-shadow: none;
+    padding: 0;
+    margin: 0;
+    min-height: 0;
+    font-size: 9.5pt;
+    font-weight: 500;
+    color: inherit;
+    selection-background-color: rgba(120, 140, 255, 0.45);
+}
+
+.win11-search-panel-entry StLabel.hint-text {
+    color: inherit;
+    opacity: 190;
+}
+
 /* Taskbar Search Button - Minimalist Icon Style */
 .win11-search-panel-icon-btn {
     padding: 0 4px;

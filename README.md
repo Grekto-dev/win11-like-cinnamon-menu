@@ -11,7 +11,10 @@ A modern desktop applet for the **Cinnamon Desktop Environment** (Linux Mint and
   - Preserves your active Cinnamon theme's colors, dark/light mode, and accent tones.
   - **Fixed, proportional size**: the popup scales with the panel thickness (680×768 at a 48px panel, the Windows 11 Start menu as reference), is clamped to the monitor work area and cannot be resized. Previously saved sizes are ignored.
   - **Configurable Start button icon**: Linux Mint logo by default; the setting opens Cinnamon's icon chooser, which accepts any themed icon name or image file.
-  - **Icon size modes**: *Standard* (32px icons, 8 columns) or *Large* (48px icons, 6 columns).
+  - **Icon size modes**: *Small* (32px icons, 8 columns), *Medium* (40px, 7 columns) or *Large* (48px, 6 columns).
+  - **Footer shortcuts** (left to right): Documents, Downloads, Music, Pictures, Videos, Network, Personal folder, File Explorer, Settings, and the always-present Power button. Each one (except Power) can be toggled in *Layout options → Folders*.
+  - **Taskbar search**: hidden, icon only, icon + label, or a real *search box* (about 4.9x the panel thickness wide). The box is inactive until clicked; the text typed in it and in the menu's search field mirror each other.
+  - **Sections**: *All*, recently added apps and recent files can be shown or hidden independently (*Layout options → Recent* / *All*). The recent-files toggle is a placeholder for a later design.
 
 - **Pinned Applications (8-column grid in Standard mode, 6 in Large)**:
   - **Drag and Drop**: Reorder pinned apps with smooth auto-arranging animations.
@@ -98,3 +101,8 @@ git clone https://github.com/Grekto-dev/win11-menu.git ~/.local/share/cinnamon/a
 ## 📄 License
 
 This project is licensed under the GNU General Public License v3.0 (GPL-3.0) — see the [LICENSE](LICENSE) file for details.
+
+
+## Settings window
+
+*Configure…* opens a standalone GTK window (`win11-menu-settings.py`, one per panel instance) with **Language**, **Layout options** (with *Folders* and *Recent* sub-pages) and **Behavior**. Every page scrolls, so nothing is hidden in a small window. Texts appear in one language at a time and switch immediately when you change the language; the Start menu and search language only change when you press **OK**. All other settings apply live. The window writes the instance's Cinnamon settings JSON and touches a trigger file in `~/.cache/win11-menu/`, which the applet watches. If the script is missing, Cinnamon's native settings page is used as a fallback.

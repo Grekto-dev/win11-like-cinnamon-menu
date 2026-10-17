@@ -4,20 +4,21 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const source = fs.readFileSync(require('node:path').join(__dirname, '../applet.js'), 'utf8');
-const start = source.indexOf('    _updateSearchPanelButton() {');
+const start = source.indexOf('    _searchMode() {');
 const end = source.indexOf('\n    _updatePanelButtonsActiveState()', start);
-const update = vm.runInNewContext('({' + source.slice(start, end) + '})._updateSearchPanelButton', {
+const methods = vm.runInNewContext('(class {' + source.slice(start, end) + '}).prototype', {
     St: {Side: {LEFT: 0, RIGHT: 1, TOP: 2, BOTTOM: 3}, TextDirection: {LTR: 0, RTL: 1}},
     Clutter: {ActorAlign: {FILL: 0, CENTER: 1}}
 });
+const update = methods._updateSearchPanelButton;
 function render(spacing, visible = true, orientation = 3, rtl = false) {
     let style = '';
     const noop = () => {};
     const widget = () => ({hide: noop, show: noop, set_text: noop, set_style: noop,
-        set_icon_size: noop, set_style_class_name: noop, set_height: noop, set_y_align: noop});
-    update.call({showSearchButton: visible, searchButtonSpacing: spacing, _orientation: orientation,
+        set_icon_size: noop, set_style_class_name: noop, set_height: noop, set_width: noop, set_hint_text: noop, set_y_align: noop});
+    update.call({searchDisplay: visible ? 'pill' : 'hidden', searchButtonSpacing: spacing, _orientation: orientation, _searchMode: methods._searchMode,
         actor: {set_style: s => {style = s;}, get_text_direction: () => rtl ? 1 : 0},
-        searchPanelButton: widget(), searchPanelLabel: widget(), searchPanelIcon: widget(),
+        searchPanelButton: widget(), searchPanelLabel: widget(), searchPanelIcon: widget(), searchPanelEntry: widget(),
         t: s => s, _updatePanelButtonsActiveState: noop});
     return Object.fromEntries(style.split(';').filter(s => s.trim()).map(s => s.split(':').map(x => x.trim())));
 }

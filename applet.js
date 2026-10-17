@@ -110,6 +110,7 @@ const I18N = {
         pictures: "Pictures",
         music: "Music",
         videos: "Videos",
+        network: "Network",
         personal_folder: "Personal folder",
         power: "Power",
         lock_screen: "Lock",
@@ -178,6 +179,7 @@ const I18N = {
         pictures: "Imagens",
         music: "Música",
         videos: "Vídeos",
+        network: "Rede",
         personal_folder: "Pasta pessoal",
         power: "Energia",
         lock_screen: "Bloquear",
@@ -625,8 +627,17 @@ class Win11PopupMenu extends Applet.AppletPopupMenu {
 }
 
 class Win11MenuApplet extends Applet.TextIconApplet {
-    constructor(orientation, panel_height, instance_id) {
+
+    // Pinned/folder grid density per "icon-size-mode" setting (values at a 48px panel).
+    static ICON_MODES = {
+        standard: {cols: 8, icon: 32, box: 42, cellH: 82, folderCellW: 82, folderCellH: 86, mergeBottom: 48},
+        medium: {cols: 7, icon: 40, box: 50, cellH: 93, folderCellW: 93, folderCellH: 97, mergeBottom: 56},
+        large: {cols: 6, icon: 48, box: 58, cellH: 104, folderCellW: 104, folderCellH: 108, mergeBottom: 64}
+    };
+    constructor(orientation, panel_height, instance_id, metadata) {
         super(orientation, panel_height, instance_id);
+        this._appletPath = (metadata && metadata.path) ||
+            GLib.build_filenamev([GLib.get_home_dir(), ".local", "share", "cinnamon", "applets", "win11-menu@cinnamon"]);
 
         this.setAllowedLayout(Applet.AllowedLayout.BOTH);
 
@@ -680,6 +691,22 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         });
         this.searchPanelButton.add(this.searchPanelIcon, { y_align: St.Align.MIDDLE, y_fill: false });
         this.searchPanelButton.add(this.searchPanelLabel, { y_align: St.Align.MIDDLE, y_fill: false });
+        // "Search box" mode: a real field. Inactive (not reactive, not editable) until clicked.
+        this.searchPanelEntry = new St.Entry({
+            style_class: 'win11-search-panel-entry',
+            hint_text: "Search",
+            can_focus: true,
+            reactive: false,
+            x_expand: true,
+            y_align: Clutter.ActorAlign.CENTER
+        });
+        this.searchPanelText = this.searchPanelEntry.clutter_text;
+        this.searchPanelText.set_editable(false);
+        this.searchPanelText.set_reactive(false);
+        this.searchPanelText.connect('text-changed', () => this._mirrorSearchText('panel'));
+        this.searchPanelText.connect('key-press-event', (actor, event) => this._onPanelSearchKeyPress(actor, event));
+        this.searchPanelEntry.hide();
+        this.searchPanelButton.add(this.searchPanelEntry, { expand: true, x_fill: true, y_align: St.Align.MIDDLE, y_fill: false });
         this.actor.add(this.searchPanelButton, { y_align: St.Align.MIDDLE, y_fill: false });
 
         // Individualized hover feedback & tooltip for each button
@@ -701,8 +728,12 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this.settings = new Settings.AppletSettings(this, "win11-menu@cinnamon", instance_id);
 
         this.settings.bind("language", "language", () => this._onLanguageChanged());
-        this.settings.bind("show-search-button", "showSearchButton", () => this._updateSearchPanelButton());
-        this.settings.bind("search-button-style", "searchButtonStyle", () => this._updateSearchPanelButton());
+        this.settings.bind("search-display", "searchDisplay", () => this._updateSearchPanelButton());
+        // Legacy keys, read only to migrate old configurations once (see _migrateLegacySettings).
+        this.settings.bind("show-search-button", "showSearchButton", null);
+        this.settings.bind("search-button-style", "searchButtonStyle", null);
+        this.settings.bind("show-recents", "showRecents", null);
+        this.settings.bind("settings-version", "settingsVersion", null);
         this.settings.bind("search-button-size-mode", "searchButtonSizeMode", () => this._updateSearchPanelButton());
         this.settings.bind("search-pill-height", "searchPillHeight", () => this._updateSearchPanelButton());
         this.settings.bind("search-button-spacing", "searchButtonSpacing", () => this._updateSearchPanelButton());
@@ -716,7 +747,9 @@ class Win11MenuApplet extends Applet.TextIconApplet {
 
         this.settings.bind("icon-size-mode", "iconSizeMode", () => this._onLayoutChanged());
         this.settings.bind("show-avatar", "showAvatar", () => this._refreshFooter());
-        this.settings.bind("show-recents", "showRecents", () => this._refreshRecentSection());
+        this.settings.bind("show-recent-apps", "showRecentApps", () => this._refreshRecentSection());
+        this.settings.bind("show-recent-files", "showRecentFiles", () => this._refreshRecentSection());
+        this.settings.bind("show-all-apps", "showAllApps", () => this._applyAllAppsVisibility());
         this.settings.bind("show-description", "showDescription", null);
 
         this.settings.bind("show-files", "showFiles", () => this._refreshFooter());
@@ -727,6 +760,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this.settings.bind("show-music", "showMusic", () => this._refreshFooter());
         this.settings.bind("show-videos", "showVideos", () => this._refreshFooter());
         this.settings.bind("show-home", "showHome", () => this._refreshFooter());
+        this.settings.bind("show-network", "showNetwork", () => this._refreshFooter());
 
         this.settings.bind("enable-autoscroll", "autoscrollEnabled", () => this._updateAutoscroll());
         this.settings.bind("activate-on-hover", "activateOnHover", () => this._updateActivateOnHover());
@@ -772,6 +806,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
 
         this.RecentManager = DocInfo.getDocManager();
         this.privacy_settings = new Gio.Settings({ schema_id: PRIVACY_SCHEMA });
+        this._migrateLegacySettings();
         this._session = new GnomeSession.SessionManager();
         this._screenSaverProxy = new ScreenSaver.ScreenSaverProxy();
         this._pathCompleter = new Gio.FilenameCompleter();
@@ -783,6 +818,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this._buildPopupUI();
         this._ensureInitialPinnedItems();
         this._fullRefresh();
+        this._applyAllAppsVisibility();
 
         this._updateKeybinding();
         this._updateIconAndLabel();
@@ -811,6 +847,63 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         });
 
         this.set_show_label_in_vertical_panels(false);
+        this._setupCacheMonitor();
+    }
+
+    /* =====================================================================
+     * STANDALONE SETTINGS WINDOW BRIDGE
+     * The GTK window (win11-menu-settings.py) writes this instance's settings
+     * JSON, then touches a trigger file in ~/.cache/win11-menu/.
+     * ===================================================================== */
+    configureApplet(tab = 0) {
+        const script = GLib.build_filenamev([this._appletPath, "win11-menu-settings.py"]);
+        if (!GLib.file_test(script, GLib.FileTest.EXISTS)) {
+            super.configureApplet(tab);
+            return;
+        }
+        try {
+            Util.spawn(["/usr/bin/python3", script, "--instance-id", String(this.instance_id)]);
+        } catch (e) {
+            global.logWarning("[win11-menu] Could not open the settings window: " + e.message);
+            super.configureApplet(tab);
+        }
+    }
+
+    _onCacheTrigger(name) {
+        const id = String(this.instance_id);
+        try {
+            if (name === "refresh-" + id || name === "refresh-all") {
+                this.settings.remoteUpdate(null, null);
+            } else if (name === "reset-pinned-" + id) {
+                this._reset_pinned_apps();
+            }
+        } catch (e) {
+            global.logWarning("[win11-menu] Settings trigger failed: " + e.message);
+        }
+    }
+
+    _setupCacheMonitor() {
+        try {
+            const dir = GLib.build_filenamev([GLib.get_user_cache_dir(), "win11-menu"]);
+            GLib.mkdir_with_parents(dir, 0o755);
+            this._cacheMonitor = Gio.File.new_for_path(dir).monitor_directory(Gio.FileMonitorFlags.NONE, null);
+            this._cacheMonitorId = this._cacheMonitor.connect("changed", (monitor, file, other, eventType) => {
+                if (eventType === Gio.FileMonitorEvent.CHANGES_DONE_HINT)
+                    this._onCacheTrigger(file.get_basename());
+            });
+        } catch (e) {
+            global.logWarning("[win11-menu] Settings trigger monitor failed: " + e.message);
+        }
+    }
+
+    _cleanupCacheMonitor() {
+        if (this._cacheMonitor) {
+            if (this._cacheMonitorId)
+                this._cacheMonitor.disconnect(this._cacheMonitorId);
+            this._cacheMonitor.cancel();
+            this._cacheMonitor = null;
+            this._cacheMonitorId = 0;
+        }
     }
 
     t(key, ...args) {
@@ -866,8 +959,19 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this._rebuildSearchFilterPills();
     }
 
+    // Effective taskbar search mode: hidden | icon | pill | box.
+    // A text box cannot live in a vertical panel, so it degrades to the icon there.
+    _searchMode() {
+        let mode = ["hidden", "icon", "pill", "box"].includes(this.searchDisplay) ? this.searchDisplay : "pill";
+        const vertical = this._orientation === St.Side.LEFT || this._orientation === St.Side.RIGHT;
+        if (vertical && mode === "box")
+            mode = "icon";
+        return mode;
+    }
+
     _updateSearchPanelButton() {
-        const spacing = this.showSearchButton
+        const mode = this._searchMode();
+        const spacing = mode !== "hidden"
             ? Math.max(0, Math.min(24, Number(this.searchButtonSpacing) || 0)) : 0;
         const vertical = this._orientation === St.Side.LEFT || this._orientation === St.Side.RIGHT;
         const trailingEdge = vertical ? 'bottom'
@@ -876,18 +980,21 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         // Zero preserves the theme's original minimum; hiding Search resets it.
         this.actor.set_style(`spacing: ${spacing}px; padding-${trailingEdge}: ${spacing}px;`);
 
-        if (!this.showSearchButton) {
+        if (mode === "hidden") {
             this.searchPanelButton.hide();
             return;
         }
         this.searchPanelButton.show();
         this.searchPanelLabel.set_text(this.t("search"));
+        this.searchPanelEntry.set_hint_text(this.t("search"));
 
         let ph = this._panelHeight || (this.panel ? this.panel.height : 40);
 
-        if (this.searchButtonStyle === "icon") {
+        if (mode === "icon") {
             this.searchPanelButton.set_style_class_name('win11-search-panel-icon-btn grouped-window-list-item-box');
             this.searchPanelLabel.hide();
+            this.searchPanelEntry.hide();
+            this.searchPanelButton.set_width(-1);
             this.searchPanelButton.set_height(-1);
             this.searchPanelButton.set_y_align(Clutter.ActorAlign.FILL);
 
@@ -901,10 +1008,15 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             this.searchPanelIcon.set_icon_size(iconSize);
         } else {
             this.searchPanelButton.set_style_class_name('win11-search-panel-pill');
-            if (this._orientation === St.Side.LEFT || this._orientation === St.Side.RIGHT) {
+            if (mode === "box") {
                 this.searchPanelLabel.hide();
+                this.searchPanelEntry.show();
             } else {
-                this.searchPanelLabel.show();
+                this.searchPanelEntry.hide();
+                if (vertical)
+                    this.searchPanelLabel.hide();
+                else
+                    this.searchPanelLabel.show();
             }
 
             let pillH;
@@ -916,13 +1028,83 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             }
 
             this.searchPanelButton.set_height(pillH);
+            // The field is as wide as the Windows 11 taskbar search box: ~4.9x the taskbar thickness.
+            this.searchPanelButton.set_width(mode === "box" ? Math.round(ph * 4.9) : -1);
             this.searchPanelButton.set_y_align(Clutter.ActorAlign.CENTER);
 
             let searchIconSize = Math.max(14, Math.min(pillH - 8, Math.round(pillH * 0.54)));
             this.searchPanelIcon.set_style(null);
             this.searchPanelIcon.set_icon_size(searchIconSize);
         }
+        if (mode !== "box" && this._searchBoxActive)
+            this._deactivateSearchBox();
         this._updatePanelButtonsActiveState();
+    }
+
+    /* =====================================================================
+     * SEARCH BOX (panel text field mirrored with the menu's search entry)
+     * ===================================================================== */
+    _mirrorSearchText(source) {
+        if (this._mirroringSearch || !this.searchPanelEntry || !this.searchEntry)
+            return;
+        const from = source === 'panel' ? this.searchPanelEntry : this.searchEntry;
+        const to = source === 'panel' ? this.searchEntry : this.searchPanelEntry;
+        const text = from.get_text();
+        if (to.get_text() === text)
+            return;
+        this._mirroringSearch = true;
+        try {
+            to.set_text(text);
+        } finally {
+            this._mirroringSearch = false;
+        }
+    }
+
+    _activateSearchBox() {
+        this._searchBoxActive = true;
+        this.searchPanelEntry.set_reactive(true);
+        this.searchPanelText.set_reactive(true);
+        this.searchPanelText.set_editable(true);
+    }
+
+    _deactivateSearchBox() {
+        this._searchBoxActive = false;
+        this.searchPanelEntry.set_reactive(false);
+        this.searchPanelText.set_reactive(false);
+        this.searchPanelText.set_editable(false);
+    }
+
+    // The ClutterText that should own the keyboard for search typing.
+    _searchFocusTarget() {
+        if (this._searchBoxActive && this._currentPopupMode === "search" && this.searchPanelText)
+            return this.searchPanelText;
+        return this.searchEntryText;
+    }
+
+    _onPanelSearchKeyPress(actor, event) {
+        if (event.get_key_symbol() === Clutter.KEY_Escape) {
+            if (!this._handleEscapeKey())
+                this.menu.close(false);
+            return Clutter.EVENT_STOP;
+        }
+        return this._onSearchKeyPress(actor, event);
+    }
+
+    /* One-time migration of the pre-2.0 settings into the new keys. */
+    _migrateLegacySettings() {
+        if ((Number(this.settingsVersion) || 1) >= 2)
+            return;
+        if (this.showSearchButton === false)
+            this.searchDisplay = "hidden";
+        else if (this.searchButtonStyle === "icon")
+            this.searchDisplay = "icon";
+        else if (!["hidden", "icon", "pill", "box"].includes(this.searchDisplay))
+            this.searchDisplay = "pill";
+        if (this.showRecents === false) {
+            this.showRecentApps = false;
+            this.showRecentFiles = false;
+        }
+        this.settingsVersion = 2;
     }
 
     _updatePanelButtonsActiveState() {
@@ -940,7 +1122,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this.searchPanelButton.change_style_pseudo_class("checked", inSearch);
         this.searchPanelButton.change_style_pseudo_class("active", inSearch);
 
-        if (inSearch && this.searchButtonStyle === "pill") {
+        if (inSearch && this._searchMode() === "pill") {
             this.searchPanelButton.set_style(
                 `background-color: ${this._themeAccentCss}; border-color: ${this._themeAccentCss}; color: #ffffff;`
             );
@@ -955,11 +1137,24 @@ class Win11MenuApplet extends Applet.TextIconApplet {
 
     on_applet_clicked(event) {
         let src = event.get_source();
-        let clickedSearch = this.showSearchButton &&
+        const mode = this._searchMode();
+        let clickedSearch = mode !== "hidden" &&
                             this.searchPanelButton.visible &&
                             (src === this.searchPanelButton || this.searchPanelButton.contains(src));
 
-        if (clickedSearch) {
+        if (clickedSearch && mode === "box") {
+            // A click in the box activates it; it never toggles the menu closed.
+            this._activateSearchBox();
+            if (this.menu.isOpen) {
+                if (this._currentPopupMode === "search")
+                    this._focusSearchEntry();
+                else
+                    this._switchToPopupMode("search", true);
+            } else {
+                this._currentPopupMode = "search";
+                this.menu.open(this.enableAnimation);
+            }
+        } else if (clickedSearch) {
             if (this.menu.isOpen) {
                 if (this._currentPopupMode === "search") {
                     this.menu.close(this.enableAnimation);
@@ -1048,6 +1243,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this._destroying = true;
         if (this._geometrySignals) this._geometrySignals.disconnectAllSignals();
         this._cancelTransientInteractions();
+        this._cleanupCacheMonitor();
         Main.keybindingManager.removeXletHotKey(this, "overlay-key");
     }
 
@@ -1208,20 +1404,20 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         contentWidth = Math.max(1, contentWidth);
         contentHeight = Math.max(1, contentHeight);
         this._menuContentSize = {width: contentWidth, height: contentHeight};
-        const large = this.iconSizeMode === 'large';
+        const mode = Win11MenuApplet.ICON_MODES[this.iconSizeMode] || Win11MenuApplet.ICON_MODES.standard;
         const scale = geometry.scale;
         const logicalScale = scale / geometry.uiScale;
-        const cols = large ? 6 : 8;
-        const iconSize = (large ? 48 : 32) * logicalScale;
-        const iconBox = (large ? 58 : 42) * scale;
+        const cols = mode.cols;
+        const iconSize = mode.icon * logicalScale;
+        const iconBox = mode.box * scale;
         const pinned = {cols, cellW: Math.max(1, Math.floor(608 * scale / cols)),
-            cellH: Math.max(1, Math.round((large ? 104 : 82) * scale)),
+            cellH: Math.max(1, Math.round(mode.cellH * scale)),
             iconSize, iconBox, scale, logicalScale,
             mergeInset: 17 / 76 * (608 * scale / cols),
-            mergeTop: 6 * scale, mergeBottom: (large ? 64 : 48) * scale};
+            mergeTop: 6 * scale, mergeBottom: mode.mergeBottom * scale};
         this._layoutMetrics = {pinned, folder: {cols: 4,
-            cellW: Math.max(1, Math.round((large ? 104 : 82) * scale)),
-            cellH: Math.max(1, Math.round((large ? 108 : 86) * scale)),
+            cellW: Math.max(1, Math.round(mode.folderCellW * scale)),
+            cellH: Math.max(1, Math.round(mode.folderCellH * scale)),
             iconSize, iconBox, scale, logicalScale}};
         this.applicationIconSize = iconSize;
         // Lock both requested dimensions, not just natural size: overflow belongs
@@ -1306,6 +1502,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
 
         this.searchEntryText = this.searchEntry.clutter_text;
         this.searchEntryText.connect('text-changed', this._onSearchTextChanged.bind(this));
+        this.searchEntryText.connect('text-changed', () => this._mirrorSearchText('menu'));
         this.searchEntryText.connect('key-press-event', this._onSearchKeyPress.bind(this));
         this.searchEntry.connect('button-press-event', () => {
             this.closeFloatingMenus();
@@ -1883,6 +2080,35 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this.footerBar.add(this.footerActionsBox, { expand: false, y_align: St.Align.MIDDLE });
     }
 
+    // Footer shortcuts, left to right. The power button is always appended after
+    // them (far right) and is intentionally not configurable.
+    _footerShortcuts() {
+        const open = path => "xdg-open " + GLib.shell_quote(path);
+        const home = GLib.get_home_dir();
+        const dir = (dirEnum, fallback) => GLib.get_user_special_dir(dirEnum) || fallback;
+        const list = [
+            {id: 'documents', enabled: this.showDocuments, icon: 'folder-documents-symbolic', labelKey: 'documents',
+                path: dir(GLib.UserDirectory.DIRECTORY_DOCUMENTS)},
+            {id: 'downloads', enabled: this.showDownloads, icon: 'folder-download-symbolic', labelKey: 'downloads',
+                path: dir(GLib.UserDirectory.DIRECTORY_DOWNLOAD)},
+            {id: 'music', enabled: this.showMusic, icon: 'folder-music-symbolic', labelKey: 'music',
+                path: dir(GLib.UserDirectory.DIRECTORY_MUSIC)},
+            {id: 'pictures', enabled: this.showPictures, icon: 'folder-pictures-symbolic', labelKey: 'pictures',
+                path: dir(GLib.UserDirectory.DIRECTORY_PICTURES)},
+            {id: 'videos', enabled: this.showVideos, icon: 'folder-videos-symbolic', labelKey: 'videos',
+                path: dir(GLib.UserDirectory.DIRECTORY_VIDEOS)},
+            {id: 'network', enabled: this.showNetwork, icon: 'network-workgroup-symbolic', labelKey: 'network',
+                path: 'network:///'},
+            {id: 'home', enabled: this.showHome, icon: 'user-home-symbolic', labelKey: 'personal_folder', path: home},
+            {id: 'files', enabled: this.showFiles, icon: 'xsi-folder-symbolic', labelKey: 'file_explorer', path: home},
+            {id: 'settings', enabled: this.showSettings, icon: 'xsi-preferences-symbolic', labelKey: 'system_settings',
+                command: 'cinnamon-settings'}
+        ];
+        return list.filter(item => item.enabled && (item.command || item.path))
+            .map(item => ({id: item.id, icon: item.icon, labelKey: item.labelKey,
+                command: item.command || open(item.path)}));
+    }
+
     _refreshFooter() {
         if (!this.footerBar)
             return;
@@ -1953,42 +2179,10 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             return btn;
         };
 
-        if (this.showFiles) {
-            addFooterBtn('xsi-folder-symbolic', this.t('file_explorer'), () => {
+        for (const shortcut of this._footerShortcuts()) {
+            addFooterBtn(shortcut.icon, this.t(shortcut.labelKey), () => {
                 this.menu.close();
-                Util.spawnCommandLine("xdg-open " + GLib.shell_quote(GLib.get_home_dir()));
-            });
-        }
-
-        if (this.showSettings) {
-            addFooterBtn('xsi-preferences-symbolic', this.t('system_settings'), () => {
-                this.menu.close();
-                Util.spawnCommandLine("cinnamon-settings");
-            });
-        }
-
-        const addSpecialDirBtn = (enabled, dirEnum, iconName, labelKey) => {
-            if (!enabled)
-                return;
-            let path = GLib.get_user_special_dir(dirEnum);
-            if (!path)
-                return;
-            addFooterBtn(iconName, this.t(labelKey), () => {
-                this.menu.close();
-                Util.spawnCommandLine("xdg-open " + GLib.shell_quote(path));
-            });
-        };
-
-        addSpecialDirBtn(this.showDownloads, GLib.UserDirectory.DIRECTORY_DOWNLOAD, 'folder-download-symbolic', 'downloads');
-        addSpecialDirBtn(this.showDocuments, GLib.UserDirectory.DIRECTORY_DOCUMENTS, 'folder-documents-symbolic', 'documents');
-        addSpecialDirBtn(this.showPictures, GLib.UserDirectory.DIRECTORY_PICTURES, 'folder-pictures-symbolic', 'pictures');
-        addSpecialDirBtn(this.showMusic, GLib.UserDirectory.DIRECTORY_MUSIC, 'folder-music-symbolic', 'music');
-        addSpecialDirBtn(this.showVideos, GLib.UserDirectory.DIRECTORY_VIDEOS, 'folder-videos-symbolic', 'videos');
-
-        if (this.showHome) {
-            addFooterBtn('user-home-symbolic', this.t('personal_folder'), () => {
-                this.menu.close();
-                Util.spawnCommandLine("xdg-open " + GLib.shell_quote(GLib.get_home_dir()));
+                Util.spawnCommandLine(shortcut.command);
             });
         }
 
@@ -3217,7 +3411,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         let items = [];
 
         // 1. Recently launched apps
-        let recentAppEntries = Array.isArray(this.recentApps) ? this.recentApps : [];
+        let recentAppEntries = this.showRecentApps && Array.isArray(this.recentApps) ? this.recentApps : [];
         for (let entry of recentAppEntries) {
             let app = appsys.lookup_app(entry.id);
             if (app) {
@@ -3234,7 +3428,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         }
 
         // 2. Recent files from Cinnamon DocManager
-        let rememberRecent = this.privacy_settings.get_boolean(REMEMBER_RECENT_KEY);
+        let rememberRecent = this.showRecentFiles && this.privacy_settings.get_boolean(REMEMBER_RECENT_KEY);
         if (rememberRecent && this.RecentManager && this.RecentManager._infosByTimestamp) {
             let recents = this.RecentManager._infosByTimestamp.filter(info => !info.name.startsWith("."));
             for (let info of recents) {
@@ -3255,7 +3449,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         }
 
         // If user has fewer than 6 items on a fresh setup, include a few common apps so Recent section looks rich
-        if (items.length < 6) {
+        if (this.showRecentApps && items.length < 6) {
             let fallbackApps = ["nemo.desktop", "org.gnome.Terminal.desktop", "cinnamon-settings.desktop", "firefox.desktop"];
             for (let id of fallbackApps) {
                 if (items.length >= 6)
@@ -3287,7 +3481,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this.allRecentSubTitle.set_text(this.t("recent"));
         this.allRecentBackLabel.set_text(this.t("back"));
 
-        if (!this.showRecents) {
+        if (!this.showRecentApps && !this.showRecentFiles) {
             this.recentSectionBox.hide();
             return;
         }
@@ -3563,7 +3757,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
     }
 
     _materializeAllAppsInView(maxGroups = 4) {
-        if (this._destroying || !this._allAppsGroups || !this.menu || !this.menu.isOpen ||
+        if (this._destroying || this.showAllApps === false || !this._allAppsGroups || !this.menu || !this.menu.isOpen ||
             this.allAppsListBox.mapped === false)
             return 0;
         const viewport = this.startScrollView;
@@ -3583,8 +3777,21 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         return built;
     }
 
+    _applyAllAppsVisibility() {
+        if (!this.allAppsSectionBox)
+            return;
+        if (this.showAllApps === false) {
+            this._cancelAllAppsMaterialize();
+            this.allAppsSectionBox.hide();
+            return;
+        }
+        this.allAppsSectionBox.show();
+        if (this.menu && this.menu.isOpen)
+            this._queueAllAppsMaterialize();
+    }
+
     _queueAllAppsMaterialize() {
-        if (this._allAppsIdle || this._destroying)
+        if (this._allAppsIdle || this._destroying || this.showAllApps === false)
             return;
         const generation = this._allAppsGeneration;
         this._allAppsIdle = Mainloop.idle_add(() => {
@@ -4348,7 +4555,8 @@ class Win11MenuApplet extends Applet.TextIconApplet {
 
     _onSearchKeyPress(actor, event) {
         let symbol = event.get_key_symbol();
-        if (this.searchEntryText.has_preedit())
+        // "actor" is the ClutterText that received the key (menu field or panel box).
+        if ((actor || this.searchEntryText).has_preedit())
             return Clutter.EVENT_PROPAGATE;
 
         if (this.searchResultsBox.visible && this._searchResultsList.length > 0) {
@@ -4402,7 +4610,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
     // (~250 ms with ~1100 actors), and again when focus leaves it. Keep key
     // focus on the search text, which only restyles the entry itself.
     _focusSearchEntry() {
-        const text = this.searchEntryText;
+        const text = this._searchFocusTarget();
         if (!text || global.stage.get_key_focus() === text)
             return;
         text.grab_key_focus();
@@ -4421,6 +4629,8 @@ class Win11MenuApplet extends Applet.TextIconApplet {
 
     _switchToPopupMode(mode, focusSearch = false) {
         this._currentPopupMode = mode;
+        if (mode !== "search" && this._searchBoxActive)
+            this._deactivateSearchBox();
         this.closeFloatingMenus();
         this._closeFolder();
         if (this.searchEntry.get_text() !== "")
@@ -4453,6 +4663,8 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         } else {
             this.closeFloatingMenus();
             this._closeFolder();
+            if (this._searchBoxActive)
+                this._deactivateSearchBox();
             this.searchEntry.set_text("");
             this._showStartSubView("main");
             try {
@@ -4475,6 +4687,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this._destroying = true;
         if (this._geometrySignals) this._geometrySignals.disconnectAllSignals();
         this._cancelTransientInteractions();
+        this._cleanupCacheMonitor();
         this.actor._delegate = null;
         this.menu.destroy();
         this.actor.destroy();
@@ -4483,5 +4696,5 @@ class Win11MenuApplet extends Applet.TextIconApplet {
 }
 
 function main(metadata, orientation, panel_height, instance_id) {
-    return new Win11MenuApplet(orientation, panel_height, instance_id);
+    return new Win11MenuApplet(orientation, panel_height, instance_id, metadata);
 }
