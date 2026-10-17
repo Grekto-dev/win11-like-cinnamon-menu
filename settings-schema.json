@@ -96,10 +96,11 @@
         "type": "spinbutton",
         "default": 0,
         "min": 0,
-        "max": 40,
+        "max": 24,
         "step": 1,
         "units": "px",
-        "description": "Spacing between menu and search / Espaçamento entre menu e pesquisa",
+        "description": "Extra spacing on both sides of Search / Espaçamento extra dos dois lados da pesquisa",
+        "tooltip": "Adds the same space between Menu and Search and between Search and the next applet. 0 keeps the current minimum. Applies immediately. / Acrescenta o mesmo espaço entre Menu e Pesquisa e entre Pesquisa e o próximo miniaplicativo. 0 mantém o mínimo atual. Aplicação imediata.",
         "dependency": "show-search-button"
     },
     "overlay-key": {

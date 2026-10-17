@@ -75,6 +75,7 @@ git clone https://github.com/Grekto-dev/win11-menu.git ~/.local/share/cinnamon/a
 4. Click the gear icon next to the applet or right-click the panel icon and choose **"Configure..."** to customize:
    - Language (English or PT-BR)
    - Taskbar Search button visibility and style (Pill or Icon)
+   - Extra spacing on both sides of Search (0–24 px): one value adds the same gap between Menu/Search and Search/the next applet, applied immediately. Zero keeps the original minimum spacing.
    - Panel icon and label
    - Footer shortcuts and behavioral options
 

@@ -866,15 +866,21 @@ class Win11MenuApplet extends Applet.TextIconApplet {
     }
 
     _updateSearchPanelButton() {
+        const spacing = this.showSearchButton
+            ? Math.max(0, Math.min(24, Number(this.searchButtonSpacing) || 0)) : 0;
+        const vertical = this._orientation === St.Side.LEFT || this._orientation === St.Side.RIGHT;
+        const trailingEdge = vertical ? 'bottom'
+            : (this.actor.get_text_direction() === St.TextDirection.RTL ? 'left' : 'right');
+        // Add the same extra space between Menu/Search and after Search.
+        // Zero preserves the theme's original minimum; hiding Search resets it.
+        this.actor.set_style(`spacing: ${spacing}px; padding-${trailingEdge}: ${spacing}px;`);
+
         if (!this.showSearchButton) {
             this.searchPanelButton.hide();
             return;
         }
         this.searchPanelButton.show();
         this.searchPanelLabel.set_text(this.t("search"));
-
-        let spacing = (this.searchButtonSpacing !== undefined) ? this.searchButtonSpacing : 0;
-        this.actor.set_style('spacing: ' + spacing + 'px;');
 
         let ph = this._panelHeight || (this.panel ? this.panel.height : 40);
 
