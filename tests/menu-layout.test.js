@@ -8,7 +8,7 @@ const source = fs.readFileSync(path.join(__dirname, '../applet.js'), 'utf8');
 const schema = JSON.parse(fs.readFileSync(path.join(__dirname, '../settings-schema.json'), 'utf8'));
 function harness(panelHeight = 48, scale = 1, area = {width: 1920, height: 1032}) {
     const context = {Applet: {TextIconApplet: class {}}, global: {ui_scale: scale},
-        Main: {layoutManager: {findMonitorForActor: () => ({index: 0}), primaryMonitor: {index: 0}}},
+        Main: {layoutManager: {findMonitorForActor: () => ({index: 0, width: area.width, height: area.height + panelHeight}), primaryMonitor: {index: 0, width: area.width, height: area.height + panelHeight}}},
         St: {Side: {LEFT: 0, RIGHT: 1, TOP: 2, BOTTOM: 3}},
         PINNED_COLS: 8, PINNED_CELL_W: 76, PINNED_CELL_H: 82,
         FOLDER_COLS: 4, FOLDER_CELL_W: 82, FOLDER_CELL_H: 86};
@@ -20,12 +20,12 @@ function harness(panelHeight = 48, scale = 1, area = {width: 1920, height: 1032}
         menu: {actor: actor(), isOpen: false}, popup_width: 900, popup_height: 1100});
     return {app, context, Class};
 }
-test('menu is locked to panel-proportional 680x768, ignoring legacy dimensions', () => {
+test('menu is locked to the screen-proportional 834x866, ignoring legacy dimensions', () => {
     const {app} = harness();
     app._syncMenuGeometry();
     for (const actor of [app.menu.actor, app.rootStack, app.mainContainer]) {
-        assert.equal(actor.width, 680);
-        assert.equal(actor.height, 768);
+        assert.equal(actor.width, 834);
+        assert.equal(actor.height, 866);
         assert.equal(actor.clip, true);
     }
     assert.equal(app.popup_width, 900, 'legacy settings are never overwritten');
@@ -34,10 +34,10 @@ test('menu scales once on HiDPI and uniformly clamps to available monitor area',
     const {app} = harness(96, 2, {width: 1280, height: 900});
     const g = app._getMenuGeometry();
     assert.ok(g.width <= 1260 && g.height <= 880);
-    assert.ok(Math.abs(g.width / g.height - 680 / 768) < 0.002);
+    assert.ok(Math.abs(g.width / g.height - 834 / 866) < 0.003);
     const normal = harness(96, 2, {width: 3840, height: 2064}).app._getMenuGeometry();
-    assert.equal(normal.width, 1360);
-    assert.equal(normal.height, 1536);
+    assert.equal(normal.width, 1668);
+    assert.equal(normal.height, 1732);
 });
 test('manual resizing controls and persisted size schema are absent', () => {
     assert.equal(source.includes('Applet.PopupResizeHandler'), false);
@@ -45,14 +45,14 @@ test('manual resizing controls and persisted size schema are absent', () => {
     assert.equal(source.includes('_reset_menu_size('), false);
     for (const key of ['popup-width', 'popup-height', 'reset-menu-size-button']) assert.equal(schema[key], undefined);
 });
-test('panel height and orientation changes resize immediately, without reopening', () => {
+test('panel height and orientation changes re-sync immediately; the size follows the screen, not the panel', () => {
     const {app} = harness();
     let refreshes = 0;
     Object.assign(app, {_setStyle() {}, _updateIconAndLabel() {}, _updateSearchPanelButton() {},
         _onLayoutChanged() {refreshes++; this._syncMenuGeometry();}});
     app._panelHeight = 60;
     app.on_panel_height_changed();
-    assert.equal(app.menu.actor.width, 850);
+    assert.equal(app.menu.actor.width, 834);
     app.on_orientation_changed(0);
     assert.equal(app._orientation, 0);
     assert.equal(refreshes, 2);
@@ -84,11 +84,11 @@ test('icon modes keep 32px/eight columns by default and 48px/six columns when la
     assert.equal(schema['icon-size-mode'].default, 'standard');
     app._syncMenuGeometry();
     let p = app._getPinnedMetrics();
-    assert.deepEqual([p.cols, p.cellW, p.cellH, p.iconSize, p.iconBox], [8, 76, 82, 32, 42]);
+    assert.deepEqual([p.cols, p.cellW, p.cellH, p.iconSize, p.iconBox], [8, 95, 82, 32, 42]);
     app.iconSizeMode = 'large';
     app._syncMenuGeometry();
     p = app._getPinnedMetrics();
-    assert.deepEqual([p.cols, p.cellW, p.cellH, p.iconSize, p.iconBox], [6, 101, 104, 48, 58]);
+    assert.deepEqual([p.cols, p.cellW, p.cellH, p.iconSize, p.iconBox], [6, 127, 104, 48, 58]);
     const f = app._getFolderMetrics();
     assert.deepEqual([f.cols, f.cellW, f.cellH, f.iconSize], [4, 104, 108, 48]);
 });
@@ -96,7 +96,7 @@ test('all grid metrics share the clamped panel scale, without double-scaling ico
     const {app} = harness(96, 2, {width: 3840, height: 2064});
     app._syncMenuGeometry();
     let p = app._getPinnedMetrics();
-    assert.deepEqual([p.cellW, p.cellH, p.iconSize], [152, 164, 32]);
+    assert.deepEqual([p.cellW, p.cellH, p.iconSize], [190, 164, 32]);
     app._getMenuAvailableArea = () => ({width: 600, height: 500});
     app._syncMenuGeometry();
     p = app._getPinnedMetrics();
@@ -138,7 +138,7 @@ test('real pinned and folder tiles allocate enough space for large icons, with b
     app._syncMenuGeometry();
     const pin = new Tiles.PinnedTile(app, {id: 'app', type: 'app'}, 7);
     const folder = new Tiles.FolderAppTile(app, {id: 'f'}, 'app', 4);
-    assert.deepEqual([pin.actor.width, pin.actor.height, pin.actor.x, pin.actor.y], [101, 104, 101, 104]);
+    assert.deepEqual([pin.actor.width, pin.actor.height, pin.actor.x, pin.actor.y], [127, 104, 127, 104]);
     assert.deepEqual([folder.actor.width, folder.actor.height, folder.actor.x, folder.actor.y], [104, 108, 0, 108]);
     for (const tile of [pin, folder]) {
         assert.equal(tile.iconActor.iconSize, 48);
@@ -199,9 +199,9 @@ test('locked outer bounds reserve theme chrome instead of clipping the footer', 
     app.menu.box = themed(20, 40);
     app._popupSectionActor = themed(0, 0);
     app._syncMenuGeometry();
-    assert.deepEqual([app.menu.actor.width, app.menu.actor.height], [680, 768]);
-    assert.deepEqual([app.rootStack.width, app.rootStack.height], [658, 726]);
-    assert.deepEqual([app.mainContainer.width, app.mainContainer.height], [658, 726]);
+    assert.deepEqual([app.menu.actor.width, app.menu.actor.height], [834, 866]);
+    assert.deepEqual([app.rootStack.width, app.rootStack.height], [812, 824]);
+    assert.deepEqual([app.mainContainer.width, app.mainContainer.height], [812, 824]);
 });
 test('all-apps grid uses the selected column count instead of stale eight-column constants', () => {
     const {app, context} = harness();

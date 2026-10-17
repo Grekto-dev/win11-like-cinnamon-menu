@@ -64,7 +64,10 @@ const I18N = {
         all: "All",
         view_list: "View: List",
         view_grid: "View: Grid",
-        view_categories: "View: Categories",
+        view_categories: "View: Category",
+        view_option_list: "List",
+        view_option_grid: "Grid",
+        view_option_categories: "Category",
         new_badge: "New",
         new_folder: "New folder",
         recently_added: "Recently added",
@@ -133,7 +136,10 @@ const I18N = {
         all: "Todos",
         view_list: "Exibição: Lista",
         view_grid: "Exibição: Grade",
-        view_categories: "Exibição: Categorias",
+        view_categories: "Exibição: Categoria",
+        view_option_list: "Lista",
+        view_option_grid: "Grade",
+        view_option_categories: "Categoria",
         new_badge: "Novo",
         new_folder: "Nova Pasta",
         recently_added: "Adicionados recentemente",
@@ -586,7 +592,7 @@ class Win11PopupMenu extends Applet.AppletPopupMenu {
         else if (xPos + natWidth > x2) xPos = x2 - natWidth;
 
         let yPos;
-        let floatOffset = 10; // Floating margin in Windows 11 style
+        let floatOffset = this.launcher._getMenuFloatOffset(); // 12 px at the reference size, scaled
 
         switch (this._orientation) {
             case St.Side.TOP:
@@ -634,6 +640,10 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         medium: {cols: 7, icon: 40, box: 50, cellH: 93, folderCellW: 93, folderCellH: 97, mergeBottom: 56},
         large: {cols: 6, icon: 48, box: 58, cellH: 104, folderCellW: 104, folderCellH: 108, mergeBottom: 64}
     };
+    // Reference Start menu measured on a 1920x1080 capture: the menu is a fixed fraction of the
+    // monitor (43.4% x 80.2%), centred, with a 12 px gap above the 48 px taskbar.
+    static MENU_REF = {screenW: 1920, screenH: 1080, width: 834, height: 866, gridWidth: 762, gap: 12};
+
     constructor(orientation, panel_height, instance_id, metadata) {
         super(orientation, panel_height, instance_id);
         this._appletPath = (metadata && metadata.path) ||
@@ -1373,17 +1383,23 @@ class Win11MenuApplet extends Applet.TextIconApplet {
     }
 
     _getMenuGeometry() {
+        const ref = Win11MenuApplet.MENU_REF;
         const uiScale = global.ui_scale || 1;
-        // Cinnamon's panel.height is already in stage pixels, including ui_scale.
-        const panelLogical = (this._panelHeight || 48 * uiScale) / uiScale;
-        const wantedScale = panelLogical / 48 * uiScale;
+        const monitor = Main.layoutManager.findMonitorForActor(this.actor) || Main.layoutManager.primaryMonitor;
         const area = this._getMenuAvailableArea();
         const margin = 20 * uiScale;
-        const scale = Math.max(0, Math.min(wantedScale,
-            Math.max(1, area.width - margin) / 680,
-            Math.max(1, area.height - margin) / 768));
-        return { width: Math.max(1, Math.floor(680 * scale)),
-            height: Math.max(1, Math.floor(768 * scale)), scale, uiScale };
+        // One uniform factor: the same fraction of the screen at any resolution, never stretched on
+        // ultra-wide screens and never larger than the work area. Monitor sizes are stage pixels, so
+        // HiDPI (ui_scale) is already included.
+        const scale = Math.max(0, Math.min(monitor.width / ref.screenW, monitor.height / ref.screenH,
+            Math.max(1, area.width - margin) / ref.width,
+            Math.max(1, area.height - margin) / ref.height));
+        return { width: Math.max(1, Math.floor(ref.width * scale)),
+            height: Math.max(1, Math.floor(ref.height * scale)), scale, uiScale };
+    }
+
+    _getMenuFloatOffset() {
+        return Math.max(1, Math.round(Win11MenuApplet.MENU_REF.gap * this._getMenuGeometry().scale));
     }
 
     _syncMenuGeometry() {
@@ -1410,10 +1426,10 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         const cols = mode.cols;
         const iconSize = mode.icon * logicalScale;
         const iconBox = mode.box * scale;
-        const pinned = {cols, cellW: Math.max(1, Math.floor(608 * scale / cols)),
+        const pinned = {cols, cellW: Math.max(1, Math.floor(Win11MenuApplet.MENU_REF.gridWidth * scale / cols)),
             cellH: Math.max(1, Math.round(mode.cellH * scale)),
             iconSize, iconBox, scale, logicalScale,
-            mergeInset: 17 / 76 * (608 * scale / cols),
+            mergeInset: 17 / 76 * (Win11MenuApplet.MENU_REF.gridWidth * scale / cols),
             mergeTop: 6 * scale, mergeBottom: mode.mergeBottom * scale};
         this._layoutMetrics = {pinned, folder: {cols: 4,
             cellW: Math.max(1, Math.round(mode.folderCellW * scale)),
@@ -1741,10 +1757,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this.allAppsViewBtn.add_actor(this.allAppsViewBtnIcon);
         this.allAppsViewBtn.connect('button-release-event', (actor, event) => {
             if (event.get_button() === Clutter.BUTTON_PRIMARY) {
-                let modes = ["list", "grid", "categories"];
-                let idx = modes.indexOf(this.allAppsViewMode || "list");
-                this.allAppsViewMode = modes[(idx + 1) % modes.length];
-                this._refreshAllAppsSection();
+                this._showAllAppsViewMenu(this.allAppsViewBtn);
                 return Clutter.EVENT_STOP;
             }
             return Clutter.EVENT_PROPAGATE;
@@ -2383,6 +2396,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
 
     _cancelTransientInteractions() {
         this._cancelAllAppsMaterialize();
+        this._cancelCategoryScroll();
         this._cancelFolderRenameTimers();
         this._handlePinnedGridDragOut();
         this._stopDndTracking();
@@ -3654,21 +3668,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this._allAppsGroups = [];
 
         if (mode === "categories") {
-            for (let dir of this._allDirsData) {
-                let catId = dir.get_menu_id();
-                let catApps = this._allAppsData
-                    .filter(([app, cats]) => cats.includes(catId))
-                    .map(([app]) => app);
-                if (catApps.length === 0)
-                    continue;
-
-                let header = new St.Label({
-                    text: dir.get_name(),
-                    style_class: 'win11-all-apps-letter-btn',
-                    x_expand: true
-                });
-                this._addAllAppsGroup(catId, catApps, header, mode);
-            }
+            this._renderAllAppsCategories();
         } else {
             // Group apps alphabetically (#, A, B, C, ...)
             let groups = new Map();
@@ -3705,6 +3705,184 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         }
         if (this.menu && this.menu.isOpen)
             this._queueAllAppsMaterialize();
+    }
+
+    /* =====================================================================
+     * ALL APPS: CATEGORY VIEW (tiles with a 2x2 preview, like the Windows 11 reference)
+     * Categories are the system menu directories (same source as Cinnamon's own menu).
+     * ===================================================================== */
+    _categoryTilesData() {
+        const result = [];
+        for (const dir of this._allDirsData || []) {
+            const id = dir.get_menu_id();
+            const apps = (this._allAppsData || []).filter(([app, cats]) => cats.includes(id)).map(([app]) => app);
+            if (apps.length > 0)
+                result.push({ id, name: dir.get_name(), apps });
+        }
+        return result;
+    }
+
+    _getCategoryMetrics() {
+        const metrics = this._getPinnedMetrics();
+        const scale = metrics.scale || 1;
+        // Actor sizes (set_size) are stage pixels; icon textures and CSS lengths are logical
+        // pixels that St multiplies by ui_scale, so they use scale / ui_scale.
+        const logicalScale = metrics.logicalScale || scale;
+        const tile = Math.round(154 * scale);
+        const gap = Math.round(29 * scale);
+        const gapCss = Math.round(29 * logicalScale);
+        const icon = Math.round(36 * logicalScale);
+        const mini = Math.round(68 * scale);
+        const width = Win11MenuApplet.MENU_REF.gridWidth * scale;
+        return { tile, gap, gapCss, icon, mini, cols: Math.max(1, Math.floor((width + gap) / (tile + gap))) };
+    }
+
+    _renderAllAppsCategories() {
+        if (this._openCategoryId && this._renderOpenCategory())
+            return;
+        this._openCategoryId = null;
+        const metrics = this._getCategoryMetrics();
+        let row = null;
+        this._categoryTilesData().forEach((category, index) => {
+            if (index % metrics.cols === 0) {
+                row = new St.BoxLayout({ vertical: false, style_class: 'win11-category-row' });
+                this.allAppsListBox.add_actor(row);
+            }
+            row.add_actor(this._createCategoryTile(category, metrics));
+        });
+    }
+
+    _createCategoryTile(category, metrics) {
+        const cell = new St.BoxLayout({ vertical: true, style_class: 'win11-category-cell' });
+        cell.set_style(`margin-right: ${metrics.gapCss}px;`);
+        const tile = new St.Button({ style_class: 'win11-category-tile', reactive: true, track_hover: true, can_focus: true,
+            accessible_name: category.name });
+        tile.set_size(metrics.tile, metrics.tile);
+        const grid = new St.BoxLayout({ vertical: true });
+        for (let r = 0; r < 2; r++) {
+            const rowBox = new St.BoxLayout({ vertical: false, style_class: 'win11-category-tile-row' });
+            for (let c = 0; c < 2; c++) {
+                const app = category.apps[r * 2 + c];
+                if (!app) {
+                    const filler = new St.Widget({ style_class: 'win11-category-filler' });
+                    filler.set_size(metrics.mini, metrics.mini);
+                    rowBox.add_actor(filler);
+                    continue;
+                }
+                const mini = new St.Button({ style_class: 'win11-category-mini', reactive: true, track_hover: true,
+                    accessible_name: app.get_name() });
+                mini.set_size(metrics.mini, metrics.mini);
+                mini.set_child(createAppIcon(app, metrics.icon));
+                // A click on a preview icon launches that app; anywhere else on the tile opens the category.
+                mini.connect('clicked', () => this.launchApp(app));
+                rowBox.add_actor(mini);
+            }
+            grid.add_actor(rowBox);
+        }
+        tile.set_child(grid);
+        tile.connect('clicked', () => this._openCategory(category.id));
+        const label = new St.Label({ text: category.name, style_class: 'win11-category-label' });
+        label.set_width(metrics.tile);
+        label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+        cell.add_actor(tile);
+        cell.add_actor(label);
+        return cell;
+    }
+
+    _renderOpenCategory() {
+        const category = this._categoryTilesData().find(c => c.id === this._openCategoryId);
+        if (!category)
+            return false;
+        const header = new St.BoxLayout({ vertical: false, style_class: 'win11-category-header' });
+        const back = new St.Button({ style_class: 'win11-category-back', reactive: true, track_hover: true, can_focus: true,
+            accessible_name: this.t("back") });
+        back.set_child(new St.Icon({ icon_name: 'xsi-go-previous-symbolic', icon_type: St.IconType.SYMBOLIC, icon_size: 14 }));
+        back.connect('clicked', () => this._closeCategory());
+        header.add_actor(back);
+        header.add_actor(new St.Label({ text: category.name, style_class: 'win11-category-title', y_align: Clutter.ActorAlign.CENTER }));
+        this.allAppsListBox.add_actor(header);
+        for (const app of category.apps)
+            this.allAppsListBox.add_actor(this._createAllAppsListRow(app));
+        return true;
+    }
+
+    _openCategory(id) {
+        this._openCategoryId = id;
+        this._refreshAllAppsSection();
+        this._scrollAllAppsToHeaderWhenReady();
+    }
+
+    _closeCategory() {
+        this._openCategoryId = null;
+        this._refreshAllAppsSection();
+        this._scrollAllAppsToHeaderWhenReady();
+    }
+
+    // Rebuilding the list shrinks the scroll range and the view clamps its position, so the
+    // header can only be scrolled to once the new content has been allocated (adjustment "upper"
+    // changes). One-shot, with a timer in case the height ends up unchanged.
+    _scrollAllAppsToHeaderWhenReady() {
+        this._cancelCategoryScroll();
+        let adjustment = null;
+        try {
+            adjustment = this.startScrollView.get_vscroll_bar().get_adjustment();
+        } catch (e) {
+            return;
+        }
+        this._categoryScrollAdjustment = adjustment;
+        this._categoryScrollSignal = adjustment.connect('notify::upper', () => this._finishCategoryScroll());
+        this._categoryScrollTimer = Mainloop.timeout_add(250, () => {
+            this._categoryScrollTimer = 0;
+            this._finishCategoryScroll();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _finishCategoryScroll() {
+        this._cancelCategoryScroll();
+        if (this._destroying || !this.allAppsHeaderBox)
+            return;
+        try {
+            this._scrollActorIntoView(this.allAppsHeaderBox, this.startScrollView);
+        } catch (e) {
+            // Unmapped actors have no position yet; nothing to scroll.
+        }
+    }
+
+    _cancelCategoryScroll() {
+        if (this._categoryScrollSignal && this._categoryScrollAdjustment)
+            this._categoryScrollAdjustment.disconnect(this._categoryScrollSignal);
+        this._categoryScrollSignal = 0;
+        this._categoryScrollAdjustment = null;
+        if (this._categoryScrollTimer) {
+            Mainloop.source_remove(this._categoryScrollTimer);
+            this._categoryScrollTimer = 0;
+        }
+    }
+
+    // Forget any open category (menu closed or view changed).
+    _resetAllAppsNavigation() {
+        if (!this._openCategoryId)
+            return;
+        this._openCategoryId = null;
+        if (this.allAppsViewMode === "categories")
+            this._refreshAllAppsSection();
+    }
+
+    _setAllAppsViewMode(mode) {
+        this._openCategoryId = null;
+        this.allAppsViewMode = mode;
+        this._refreshAllAppsSection();
+    }
+
+    _showAllAppsViewMenu(anchorActor) {
+        const current = this.allAppsViewMode || "list";
+        const items = ["list", "grid", "categories"].map(mode => ({
+            label: this.t("view_option_" + mode),
+            icon: mode === current ? "object-select-symbolic" : null,
+            action: () => this._setAllAppsViewMode(mode)
+        }));
+        this._showFloatingMenuAtActor(anchorActor, items);
     }
 
     /* The "All" list is ~60% of the menu's actors. Each group keeps only its
@@ -4599,6 +4777,10 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             this.searchEntry.set_text("");
             return true;
         }
+        if (this._openCategoryId && this.allAppsViewMode === "categories") {
+            this._closeCategory();
+            return true;
+        }
         if (this._currentPopupMode === "start" && this._startSubView !== "main") {
             this._showStartSubView("main");
             return true;
@@ -4667,6 +4849,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
                 this._deactivateSearchBox();
             this.searchEntry.set_text("");
             this._showStartSubView("main");
+            this._resetAllAppsNavigation();
             try {
                 this.startScrollView.get_vscroll_bar().get_adjustment().set_value(0);
             } catch (e) {}

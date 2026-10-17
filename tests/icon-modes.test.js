@@ -9,7 +9,7 @@ const schema = JSON.parse(fs.readFileSync(path.join(__dirname, '../settings-sche
 
 function harness() {
     const context = {Applet: {TextIconApplet: class {}}, global: {ui_scale: 1},
-        Main: {layoutManager: {findMonitorForActor: () => ({index: 0}), primaryMonitor: {index: 0}}},
+        Main: {layoutManager: {findMonitorForActor: () => ({index: 0, width: 1920, height: 1080}), primaryMonitor: {index: 0, width: 1920, height: 1080}}},
         St: {Side: {LEFT: 0, RIGHT: 1, TOP: 2, BOTTOM: 3}}};
     const Class = vm.runInNewContext(source.slice(source.indexOf('class Win11MenuApplet'), source.indexOf('\nfunction main')) + '\nWin11MenuApplet', context);
     const app = Object.create(Class.prototype);
@@ -47,7 +47,7 @@ test('every mode fits its grid inside the locked menu and keeps merge zones insi
 test('unknown or missing mode behaves as small; small stays unchanged', () => {
     const app = harness();
     const small = metrics(app, 'standard').p;
-    assert.deepEqual([small.cols, small.cellW, small.cellH, small.iconSize, small.iconBox], [8, 76, 82, 32, 42]);
+    assert.deepEqual([small.cols, small.cellW, small.cellH, small.iconSize, small.iconBox], [8, 95, 82, 32, 42]);
     assert.equal(metrics(app, undefined).p.cols, 8);
     assert.equal(metrics(app, 'bogus').p.cols, 8);
 });

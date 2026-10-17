@@ -9,11 +9,12 @@ A modern desktop applet for the **Cinnamon Desktop Environment** (Linux Mint and
 - **Windows 11 Start Menu Design & Geometry**:
   - Centered popup window with rounded cards, padding, and smooth transition animations.
   - Preserves your active Cinnamon theme's colors, dark/light mode, and accent tones.
-  - **Fixed, proportional size**: the popup scales with the panel thickness (680×768 at a 48px panel, the Windows 11 Start menu as reference), is clamped to the monitor work area and cannot be resized. Previously saved sizes are ignored.
+  - **Fixed, screen-proportional size**: the popup is always 43.4 % × 80.2 % of the monitor (834×866 on 1920×1080, measured from a Windows 11 reference, see [docs/menu-proportions.md](docs/menu-proportions.md)), at any resolution and UI scale; it is clamped to the work area and cannot be resized. Previously saved sizes are ignored.
   - **Configurable Start button icon**: Linux Mint logo by default; the setting opens Cinnamon's icon chooser, which accepts any themed icon name or image file.
   - **Icon size modes**: *Small* (32px icons, 8 columns), *Medium* (40px, 7 columns) or *Large* (48px, 6 columns).
   - **Footer shortcuts** (left to right): Documents, Downloads, Music, Pictures, Videos, Network, Personal folder, File Explorer, Settings, and the always-present Power button. Each one (except Power) can be toggled in *Layout options → Folders*.
   - **Taskbar search**: hidden, icon only, icon + label, or a real *search box* (about 4.9x the panel thickness wide). The box is inactive until clicked; the text typed in it and in the menu's search field mirror each other.
+  - **All apps view**: *List*, *Grid* or *Category* (tiles with a 2×2 preview of each system menu category; click a preview icon to launch it, click the tile to open the category). Pick it from the *View:* dropdown.
   - **Sections**: *All*, recently added apps and recent files can be shown or hidden independently (*Layout options → Recent* / *All*). The recent-files toggle is a placeholder for a later design.
 
 - **Pinned Applications (8-column grid in Standard mode, 6 in Large)**:
