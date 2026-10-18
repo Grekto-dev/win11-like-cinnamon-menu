@@ -24,7 +24,7 @@ function harness(props = {}) {
     Object.assign(app, {t: k => k, showRecentApps: true, showRecentFiles: true, showAllApps: true,
         recentApps: [{id: 'a', timestamp: 5}], _formatRelativeTime: () => 'now',
         privacy_settings: {get_boolean: () => true},
-        RecentManager: {_infosByTimestamp: [{name: 'doc.txt', uri: 'file:///doc.txt', uriDecoded: '/doc.txt', mtime: 9}]},
+        _recentFilesCache: {getFiles: () => [{name: 'doc.txt', uri: 'file:///doc.txt', uriDecoded: '/doc.txt', mtime: 9}]},
         allAppsSectionBox: box(), recentSectionBox: box(), recentGridBox: box(), recentTitleLabel: box(),
         recentMoreBtnLabel: box(), allRecentSubTitle: box(), allRecentBackLabel: box(), _destroying: false,
         _createRecentItemWidget: () => box(), menu: {isOpen: true}}, props);
@@ -41,7 +41,7 @@ test('both recent kinds appear by default', () => {
     const k = kinds(harness().app);
     assert.ok(k.includes('app:AppA') && k.includes('file:doc.txt'));
 });
-test('recent apps off removes recent and filler apps but keeps files', () => {
+test('recent apps off removes apps but keeps cached files', () => {
     const k = kinds(harness({showRecentApps: false}).app);
     assert.deepEqual(k, ['file:doc.txt']);
 });

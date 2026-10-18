@@ -35,7 +35,7 @@
         "appearance-menu": {
             "type": "section",
             "title": "Menu Options / Opções do Menu",
-            "keys": ["icon-size-mode", "show-description", "reset-pinned-button"]
+            "keys": ["menu-size", "show-description", "reset-pinned-button"]
         },
         "content-sections": {
             "type": "section",
@@ -98,7 +98,8 @@
     "show-recent-files": {
         "type": "switch",
         "default": true,
-        "description": "Show recent files / Mostrar arquivos recentes"
+        "description": "Show recent files / Mostrar arquivos recentes",
+        "tooltip": "Uses actual file history and respects Cinnamon's privacy setting; disabling files keeps recent apps visible / Usa o histórico real e respeita a privacidade do Cinnamon; desativar arquivos mantém os aplicativos recentes visíveis"
     },
     "search-button-size-mode": {
         "type": "combobox",
@@ -208,14 +209,18 @@
         "dependency": "menu-custom"
     },
     "icon-size-mode": {
+        "type": "generic",
+        "default": "standard"
+    },
+    "menu-size": {
         "type": "combobox",
-        "default": "standard",
-        "description": "Menu application icons / Ícones dos aplicativos no menu",
-        "tooltip": "Applies immediately. Sizes adapt proportionally to the panel and available screen area. / Aplicação imediata. Os tamanhos se ajustam proporcionalmente ao painel e à área disponível da tela.",
+        "default": "large",
+        "description": "Menu size / Tamanho do menu",
+        "tooltip": "Applies immediately. Menu bounds adapt proportionally to the monitor and available area; icons keep the same reference size. / Aplicação imediata. As dimensões do menu se ajustam proporcionalmente ao monitor e à área disponível; os ícones mantêm o mesmo tamanho de referência.",
         "options": {
-            "Small (32 px, 8 columns) / Pequeno (32 px, 8 colunas)": "standard",
-            "Medium (40 px, 7 columns) / Médio (40 px, 7 colunas)": "medium",
-            "Large (48 px, 6 columns) / Grande (48 px, 6 colunas)": "large"
+            "Small / Pequeno": "small",
+            "Medium / Médio": "medium",
+            "Large / Grande": "large"
         }
     },
     "show-avatar": {

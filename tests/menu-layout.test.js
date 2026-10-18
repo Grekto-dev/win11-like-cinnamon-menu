@@ -79,18 +79,18 @@ test('Start icon rendering accepts themed names and existing local images withou
     }
     assert.deepEqual(calls, [['theme', 'start-here'], ['file', '/home/user/custom start.png']]);
 });
-test('icon modes keep 32px/eight columns by default and 48px/six columns when large', () => {
+test('menu sizes keep 32px icons while the default large and small menus use eight and six columns', () => {
     const {app} = harness();
-    assert.equal(schema['icon-size-mode'].default, 'standard');
+    assert.equal(schema['menu-size'].default, 'large');
     app._syncMenuGeometry();
     let p = app._getPinnedMetrics();
     assert.deepEqual([p.cols, p.cellW, p.cellH, p.iconSize, p.iconBox], [8, 95, 82, 32, 42]);
-    app.iconSizeMode = 'large';
+    app.menuSize = 'small';
     app._syncMenuGeometry();
     p = app._getPinnedMetrics();
-    assert.deepEqual([p.cols, p.cellW, p.cellH, p.iconSize, p.iconBox], [6, 127, 104, 48, 58]);
+    assert.deepEqual([p.cols, p.cellW, p.cellH, p.iconSize, p.iconBox], [6, 95, 82, 32, 42]);
     const f = app._getFolderMetrics();
-    assert.deepEqual([f.cols, f.cellW, f.cellH, f.iconSize], [4, 104, 108, 48]);
+    assert.deepEqual([f.cols, f.cellW, f.cellH, f.iconSize], [4, 82, 86, 32]);
 });
 test('all grid metrics share the clamped panel scale, without double-scaling icon textures', () => {
     const {app} = harness(96, 2, {width: 3840, height: 2064});
@@ -103,21 +103,21 @@ test('all grid metrics share the clamped panel scale, without double-scaling ico
     assert.ok(p.cellW * p.cols < app.rootStack.width);
     assert.ok(p.iconBox < p.cellH);
 });
-test('changing icon mode live reflows both grids but preserves pins and open folder', () => {
+test('changing menu size live reflows both grids but preserves pins and open folder', () => {
     const {app} = harness();
     const pins = [{type: 'folder', id: 'folder', apps: ['a', 'b']}];
     const calls = [];
     Object.assign(app, {pinnedItems: pins, _openFolderId: 'folder',
         _refreshPinnedSection() {calls.push('pins');}, _rebuildFolderGrid(f) {calls.push(f.id);},
         _refreshAllAppsSection() {}, _refreshRecentSection() {}});
-    app.iconSizeMode = 'large';
+    app.menuSize = 'small';
     app._onLayoutChanged();
     assert.equal(app.pinnedItems, pins);
     assert.equal(app._openFolderId, 'folder');
     assert.deepEqual(calls, ['pins', 'folder']);
     assert.equal(app._getPinnedMetrics().cols, 6);
 });
-test('real pinned and folder tiles allocate enough space for large icons, with bounded labels', () => {
+test('real pinned and folder tiles use small-menu hit targets and fixed icons, with bounded labels', () => {
     const {app, context} = harness();
     class Actor {
         constructor(props = {}) {Object.assign(this, props); this.children = []; this.clutter_text = {};}
@@ -134,15 +134,15 @@ test('real pinned and folder tiles allocate enough space for large icons, with b
         appsys: {lookup_app: () => ({get_name: () => 'A very long application name'.repeat(10)})},
         createAppIcon: (_app, size) => ({iconSize: size})});
     const Tiles = vm.runInNewContext(source.slice(source.indexOf('class PinnedTile'), source.indexOf('/**\n * PopupMenu subclass')) + '\n({PinnedTile, FolderAppTile})', context);
-    app.iconSizeMode = 'large';
+    app.menuSize = 'small';
     app._syncMenuGeometry();
     const pin = new Tiles.PinnedTile(app, {id: 'app', type: 'app'}, 7);
     const folder = new Tiles.FolderAppTile(app, {id: 'f'}, 'app', 4);
-    assert.deepEqual([pin.actor.width, pin.actor.height, pin.actor.x, pin.actor.y], [127, 104, 127, 104]);
-    assert.deepEqual([folder.actor.width, folder.actor.height, folder.actor.x, folder.actor.y], [104, 108, 0, 108]);
+    assert.deepEqual([pin.actor.width, pin.actor.height, pin.actor.x, pin.actor.y], [95, 82, 95, 82]);
+    assert.deepEqual([folder.actor.width, folder.actor.height, folder.actor.x, folder.actor.y], [82, 86, 0, 86]);
     for (const tile of [pin, folder]) {
-        assert.equal(tile.iconActor.iconSize, 48);
-        assert.equal(tile.iconContainer.width, 58);
+        assert.equal(tile.iconActor.iconSize, 32);
+        assert.equal(tile.iconContainer.width, 42);
         assert.equal(tile.actor.clip, true);
         assert.ok(tile.label.height <= 28);
     }
@@ -208,7 +208,7 @@ test('all-apps grid uses the selected column count instead of stale eight-column
     context.St.BoxLayout = class {constructor() {this.children = [];} add_actor(c) {this.children.push(c);}};
     const rows = [];
     app._createGridAppButton = x => x;
-    app.iconSizeMode = 'large';
+    app.menuSize = 'small';
     app._syncMenuGeometry();
     app._addAppsGridRows({add_actor: row => rows.push(row)}, Array.from({length: 14}, (_, i) => i));
     assert.deepEqual(rows.map(r => r.children.length), [6, 6, 2]);

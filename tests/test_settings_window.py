@@ -45,7 +45,8 @@ FIXTURE_KEYS = [
     ("search-button-size-mode", "combobox", "auto", "auto"),
     ("search-pill-height", "spinbutton", 30, 30),
     ("search-button-spacing", "spinbutton", 0, 0),
-    ("icon-size-mode", "combobox", "standard", "standard"),
+    ("icon-size-mode", "generic", "standard", "standard"),
+    ("menu-size", "combobox", "large", "large"),
     ("show-avatar", "switch", True, True),
     ("show-description", "switch", True, True),
     ("show-all-apps", "switch", False, False),
@@ -247,6 +248,32 @@ class WindowTestCase(TempDirsMixin, unittest.TestCase):
             Gtk.main_iteration()
 
 
+class MenuSizeTest(WindowTestCase):
+    def test_menu_size_labels_and_order_in_both_languages(self):
+        for language, title, labels in [("en", "Menu size", ["Small", "Medium", "Large"]),
+                                        ("ptbr", "Tamanho do menu", ["Pequeno", "Médio", "Grande"])]:
+            win = self.open_window(language=language)
+            self.assertIn("menu-size", win.controls)
+            self.assertNotIn("icon-size-mode", win.controls)
+            combo = win.controls["menu-size"]
+            self.assertEqual(combo.get_active_id(), "large")
+            self.assertIn(title, visible_texts(win))
+            self.assertEqual([row[0] for row in combo.get_model()], labels)
+            for size in ("small", "medium", "large"):
+                combo.set_active_id(size)
+                self.assertEqual(combo.get_active_id(), size)
+
+    def test_changing_menu_size_writes_only_new_key_and_keeps_legacy_migration_input(self):
+        win = self.open_window(**{"icon-size-mode": "large", "menu-size": "small"})
+        before = self.read_config()
+        win.controls["menu-size"].set_active_id("medium")
+        self.settle(win)
+        expected = copy.deepcopy(before)
+        expected["menu-size"]["value"] = "medium"
+        self.assertEqual(self.read_config(), expected)
+        self.assertTrue(os.path.exists(self.trigger()))
+
+
 class StagedLanguageTest(WindowTestCase):
     def test_window_opens_in_the_saved_language(self):
         win = self.open_window(language="ptbr")
@@ -339,7 +366,7 @@ class LiveWriteTest(WindowTestCase):
         ("hover-delay", lambda c: c.set_value(250), 250),
         ("menu-icon-size", lambda c: c.set_value(48), 48),
         ("search-display", lambda c: c.set_active_id("box"), "box"),
-        ("icon-size-mode", lambda c: c.set_active_id("large"), "large"),
+        ("menu-size", lambda c: c.set_active_id("small"), "small"),
         ("menu-label", lambda c: c.set_text("Iniciar"), "Iniciar"),
         ("menu-icon", lambda c: c.set_icon("/tmp/some-logo.png"), "/tmp/some-logo.png"),
     ]

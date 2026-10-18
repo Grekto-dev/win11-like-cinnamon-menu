@@ -79,10 +79,10 @@ I18N = {
         "search_pill_height": "Custom height",
         "search_spacing": "Extra spacing on both sides of Search",
         "search_spacing_tip": "Equally increases the gap between the Start button and Search, and between Search and the next applet",
-        "icon_size_mode": "Menu icon size",
-        "icon_small": "Small (32 px, 8 columns)",
-        "icon_medium": "Medium (40 px, 7 columns)",
-        "icon_large": "Large (48 px, 6 columns)",
+        "menu_size": "Menu size",
+        "menu_small": "Small",
+        "menu_medium": "Medium",
+        "menu_large": "Large",
         "show_avatar": "Show user avatar and name",
         "show_description": "Show application descriptions in search",
         "section_folders": "Folders",
@@ -108,6 +108,7 @@ I18N = {
         "show_documents": "Documents",
         "show_recent_apps": "Show recently added apps",
         "show_recent_files": "Show recent files",
+        "recent_files_note": "Shows actual file history when Cinnamon privacy allows it (remember-recent-files). Removing an entry only removes history, never the file.",
         "overlay_key": "Keyboard shortcut to open and close the menu",
         "key_capture": "Press the keys…",
         "key_none": "None",
@@ -154,10 +155,10 @@ I18N = {
         "search_pill_height": "Altura personalizada",
         "search_spacing": "Espaçamento extra dos dois lados da pesquisa",
         "search_spacing_tip": "Aumenta igualmente a distância entre o botão Iniciar e a pesquisa e entre a pesquisa e o próximo applet",
-        "icon_size_mode": "Tamanho dos ícones do menu",
-        "icon_small": "Pequeno (32 px, 8 colunas)",
-        "icon_medium": "Médio (40 px, 7 colunas)",
-        "icon_large": "Grande (48 px, 6 colunas)",
+        "menu_size": "Tamanho do menu",
+        "menu_small": "Pequeno",
+        "menu_medium": "Médio",
+        "menu_large": "Grande",
         "show_avatar": "Mostrar avatar e nome do usuário",
         "show_description": "Mostrar descrições dos aplicativos na pesquisa",
         "section_folders": "Pastas",
@@ -183,6 +184,7 @@ I18N = {
         "show_documents": "Documentos",
         "show_recent_apps": "Mostrar aplicativos adicionados recentemente",
         "show_recent_files": "Mostrar arquivos recentes",
+        "recent_files_note": "Mostra o histórico real quando a privacidade do Cinnamon permite (remember-recent-files). Remover uma entrada apaga somente o histórico, nunca o arquivo.",
         "overlay_key": "Atalho de teclado para abrir e fechar o menu",
         "key_capture": "Pressione as teclas…",
         "key_none": "Nenhum",
@@ -385,7 +387,7 @@ def panel_position(instance_id):
         return None
 
 
-MENU_ICON_SIZES = [("standard", "icon_small"), ("medium", "icon_medium"), ("large", "icon_large")]
+MENU_SIZES = [("small", "menu_small"), ("medium", "menu_medium"), ("large", "menu_large")]
 LANGUAGES = [("en", "English"), ("ptbr", "Português (Brasil)")]  # never translated
 # Order matters: this is the top -> bottom order of the "Folders" sub-page. No power row.
 FOLDER_ROWS = [
@@ -720,7 +722,7 @@ class SettingsWindow(Gtk.Window):
                  tip_key="search_spacing_tip")
 
         menu = self.group(box, "group_menu")
-        self.row(menu, "icon_size_mode", self.combo("icon-size-mode", MENU_ICON_SIZES, "standard"))
+        self.row(menu, "menu_size", self.combo("menu-size", MENU_SIZES, "large"))
         self.row(menu, "show_avatar", self.switch("show-avatar", True))
         self.row(menu, "show_description", self.switch("show-description", True))
 
@@ -784,6 +786,7 @@ class SettingsWindow(Gtk.Window):
         group = self.group(body)
         self.row(group, "show_recent_apps", self.switch("show-recent-apps", True))
         self.row(group, "show_recent_files", self.switch("show-recent-files", False))
+        body.pack_start(self.label("recent_files_note", "w11-sub"), False, False, 0)
 
     def _build_behavior_page(self):
         box = self.page_box("page_behavior")

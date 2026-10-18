@@ -204,7 +204,7 @@ test('legacy show-search-button=false migrates to hidden', () => {
     const app = migrationApp({showSearchButton: false, searchButtonStyle: 'pill', searchDisplay: 'pill', showRecents: true});
     app._migrateLegacySettings();
     assert.equal(app.searchDisplay, 'hidden');
-    assert.equal(app.settingsVersion, 2);
+    assert.equal(app.settingsVersion, 3);
 });
 test('legacy icon style migrates to icon, pill stays pill', () => {
     const a = migrationApp({showSearchButton: true, searchButtonStyle: 'icon', searchDisplay: 'pill', showRecents: true});

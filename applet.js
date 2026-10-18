@@ -19,7 +19,7 @@ const FileUtils = imports.misc.fileUtils;
 const Util = imports.misc.util;
 const DND = imports.ui.dnd;
 const Meta = imports.gi.Meta;
-const DocInfo = imports.misc.docInfo;
+
 const GLib = imports.gi.GLib;
 const Settings = imports.ui.settings;
 const Pango = imports.gi.Pango;
@@ -27,6 +27,8 @@ const SearchProviderManager = imports.ui.searchProviderManager;
 const SignalManager = imports.misc.signalManager;
 
 const AppUtils = (typeof require !== 'undefined') ? require('./appUtils') : imports.appUtils;
+const RecentFiles = (typeof require !== 'undefined') ? require('./recentFiles') : imports.recentFiles;
+const FileSearch = (typeof require !== 'undefined') ? require('./fileSearchClient') : imports.fileSearchClient;
 
 let appsys = Cinnamon.AppSystem.get_default();
 
@@ -86,11 +88,16 @@ const I18N = {
         qs_search: "Search settings",
         filter_all: "All",
         filter_apps: "Apps",
-        filter_docs: "Documents",
+        filter_docs: "Files",
         filter_settings: "Settings",
         best_match: "Best match",
         apps_header: "Apps",
         docs_header: "Documents & Recent",
+        files_header: "Files on this computer",
+        file_search_searching: "Searching filenames… Results appear as they are found.",
+        file_search_indexing: "Building the local filename index… Results are already available below.",
+        file_search_limited: "File search returned a limited set of matches. Refine the terms for more specific results.",
+        file_search_unavailable: "File search is unavailable. Applications and other results still work.",
         settings_header: "Settings & More",
         no_results: "No results found for \"%s\"",
         open: "Open",
@@ -122,6 +129,8 @@ const I18N = {
         restart: "Restart",
         shut_down: "Shut down",
         file_unavailable: "This file is no longer available",
+        open_file_location: "Open file location",
+        remove_from_recents: "Remove from recents",
         clear_recent: "Clear recent list"
     },
     ptbr: {
@@ -158,11 +167,16 @@ const I18N = {
         qs_search: "Configurações da pesquisa",
         filter_all: "Tudo",
         filter_apps: "Aplicativos",
-        filter_docs: "Documentos",
+        filter_docs: "Arquivos",
         filter_settings: "Configurações",
         best_match: "Melhor correspondência",
         apps_header: "Aplicativos",
         docs_header: "Documentos e recentes",
+        files_header: "Arquivos neste computador",
+        file_search_searching: "Procurando nomes de arquivos… Os resultados aparecem conforme encontrados.",
+        file_search_indexing: "Criando o índice local de nomes… Os resultados já aparecem abaixo.",
+        file_search_limited: "A busca de arquivos retornou resultados parciais. Refine os termos para uma busca mais específica.",
+        file_search_unavailable: "Busca de arquivos indisponível. Aplicativos e outros resultados continuam funcionando.",
         settings_header: "Configurações e mais",
         no_results: "Nenhum resultado encontrado para \"%s\"",
         open: "Abrir",
@@ -194,6 +208,8 @@ const I18N = {
         restart: "Reiniciar",
         shut_down: "Desligar",
         file_unavailable: "Este arquivo não está mais disponível",
+        open_file_location: "Abrir local do arquivo",
+        remove_from_recents: "Remover dos recentes",
         clear_recent: "Limpar lista de recentes"
     }
 };
@@ -645,15 +661,15 @@ class Win11PopupMenu extends Applet.AppletPopupMenu {
 
 class Win11MenuApplet extends Applet.TextIconApplet {
 
-    // Pinned/folder grid density per "icon-size-mode" setting (values at a 48px panel).
-    static ICON_MODES = {
-        standard: {cols: 8, icon: 32, box: 42, cellH: 82, folderCellW: 82, folderCellH: 86, mergeBottom: 48},
-        medium: {cols: 7, icon: 40, box: 50, cellH: 93, folderCellW: 93, folderCellH: 97, mergeBottom: 56},
-        large: {cols: 6, icon: 48, box: 58, cellH: 104, folderCellW: 104, folderCellH: 108, mergeBottom: 64}
+    // Outer sizes measured on 1920x1080 reference captures; medium is their arithmetic midpoint.
+    // Menu size changes the bounds/column count, never the reference icon or native font size.
+    static MENU_SIZES = {
+        small: {width: 642, height: 726, gridWidth: 570, cols: 6},
+        medium: {width: 738, height: 796, gridWidth: 666, cols: 7},
+        large: {width: 834, height: 866, gridWidth: 762, cols: 8}
     };
-    // Reference Start menu measured on a 1920x1080 capture: the menu is a fixed fraction of the
-    // monitor (43.4% x 80.2%), centred, with a 12 px gap above the 48 px taskbar.
-    static MENU_REF = {screenW: 1920, screenH: 1080, width: 834, height: 866, gridWidth: 762, gap: 12};
+    static MENU_REF = {screenW: 1920, screenH: 1080, gap: 12,
+        icon: 32, box: 42, cellH: 82, folderCellW: 82, folderCellH: 86, mergeBottom: 48};
 
     constructor(orientation, panel_height, instance_id, metadata) {
         super(orientation, panel_height, instance_id);
@@ -770,10 +786,11 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this.settings.bind("menu-icon-size", "menuIconSize", () => this._updateIconAndLabel());
         this.settings.bind("menu-label", "menuLabel", () => this._updateIconAndLabel());
 
-        this.settings.bind("icon-size-mode", "iconSizeMode", () => this._onLayoutChanged());
+        this.settings.bind("icon-size-mode", "iconSizeMode", null); // Legacy migration input only.
+        this.settings.bind("menu-size", "menuSize", () => this._onLayoutChanged());
         this.settings.bind("show-avatar", "showAvatar", () => this._refreshFooter());
-        this.settings.bind("show-recent-apps", "showRecentApps", () => this._refreshRecentSection());
-        this.settings.bind("show-recent-files", "showRecentFiles", () => this._refreshRecentSection());
+        this.settings.bind("show-recent-apps", "showRecentApps", () => this._refreshRecentViews());
+        this.settings.bind("show-recent-files", "showRecentFiles", () => this._onRecentFilesSettingChanged());
         this.settings.bind("show-all-apps", "showAllApps", () => this._applyAllAppsVisibility());
         this.settings.bind("show-description", "showDescription", null);
 
@@ -829,7 +846,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this._themeAccentCss = "#1f9ede";
         this._themeCardBgCss = "rgba(48, 48, 54, 0.96)";
 
-        this.RecentManager = DocInfo.getDocManager();
+        this.RecentManager = null; // Gtk history is initialized off the constructor/open path.
         this.privacy_settings = new Gio.Settings({ schema_id: PRIVACY_SCHEMA });
         this._migrateLegacySettings();
         this._session = new GnomeSession.SessionManager();
@@ -862,14 +879,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
 
         appsys.connect('installed-changed', () => this._fullRefresh());
         AppFavorites.getAppFavorites().connect('changed', () => this._refreshFooter());
-        this.RecentManager.connect('changed', () => {
-            this._refreshRecentSection();
-            this._refreshSearchHomeView();
-        });
-        this.privacy_settings.connect("changed::" + REMEMBER_RECENT_KEY, () => {
-            this._refreshRecentSection();
-            this._refreshSearchHomeView();
-        });
+        this._setupRecentFiles();
 
         this.set_show_label_in_vertical_panels(false);
         this._setupCacheMonitor();
@@ -1151,21 +1161,26 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         return this._onSearchKeyPress(actor, event);
     }
 
-    /* One-time migration of the pre-2.0 settings into the new keys. */
+    /* Sequential, one-time migrations; retain legacy values and all user content. */
     _migrateLegacySettings() {
-        if ((Number(this.settingsVersion) || 1) >= 2)
-            return;
-        if (this.showSearchButton === false)
-            this.searchDisplay = "hidden";
-        else if (this.searchButtonStyle === "icon")
-            this.searchDisplay = "icon";
-        else if (!["hidden", "icon", "pill", "box"].includes(this.searchDisplay))
-            this.searchDisplay = "pill";
-        if (this.showRecents === false) {
-            this.showRecentApps = false;
-            this.showRecentFiles = false;
+        const version = Number(this.settingsVersion) || 1;
+        if (version < 2) {
+            if (this.showSearchButton === false)
+                this.searchDisplay = "hidden";
+            else if (this.searchButtonStyle === "icon")
+                this.searchDisplay = "icon";
+            else if (!["hidden", "icon", "pill", "box"].includes(this.searchDisplay))
+                this.searchDisplay = "pill";
+            if (this.showRecents === false) {
+                this.showRecentApps = false;
+                this.showRecentFiles = false;
+            }
         }
-        this.settingsVersion = 2;
+        if (version < 3) {
+            // Old labels described icon size, the inverse of the new menu-size concept.
+            this.menuSize = this.iconSizeMode === "large" ? "small" : this.iconSizeMode === "medium" ? "medium" : "large";
+            this.settingsVersion = 3;
+        }
     }
 
     _updatePanelButtonsActiveState() {
@@ -1302,6 +1317,8 @@ class Win11MenuApplet extends Applet.TextIconApplet {
 
     on_applet_removed_from_panel() {
         this._destroying = true;
+        this._destroyRecentFiles();
+        this._destroyFileSearch();
         if (this._geometrySignals) this._geometrySignals.disconnectAllSignals();
         this._cancelTransientInteractions();
         this._cleanupCacheMonitor();
@@ -1435,6 +1452,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
 
     _getMenuGeometry() {
         const ref = Win11MenuApplet.MENU_REF;
+        const profile = Win11MenuApplet.MENU_SIZES[["small", "medium", "large"].includes(this.menuSize) ? this.menuSize : "large"];
         const uiScale = global.ui_scale || 1;
         const monitor = Main.layoutManager.findMonitorForActor(this.actor) || Main.layoutManager.primaryMonitor;
         const area = this._getMenuAvailableArea();
@@ -1442,11 +1460,15 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         // One uniform factor: the same fraction of the screen at any resolution, never stretched on
         // ultra-wide screens and never larger than the work area. Monitor sizes are stage pixels, so
         // HiDPI (ui_scale) is already included.
+        // Reserve the scaled panel gap too: at high stage scales it can exceed the fixed UI
+        // margin. One extra pixel protects the floor(size) + round(gap) placement on every side.
         const scale = Math.max(0, Math.min(monitor.width / ref.screenW, monitor.height / ref.screenH,
-            Math.max(1, area.width - margin) / ref.width,
-            Math.max(1, area.height - margin) / ref.height));
-        return { width: Math.max(1, Math.floor(ref.width * scale)),
-            height: Math.max(1, Math.floor(ref.height * scale)), scale, uiScale };
+            Math.max(1, area.width - margin) / profile.width,
+            Math.max(1, area.height - margin) / profile.height,
+            Math.max(1, area.width - 1) / (profile.width + ref.gap),
+            Math.max(1, area.height - 1) / (profile.height + ref.gap)));
+        return { width: Math.max(1, Math.floor(profile.width * scale)),
+            height: Math.max(1, Math.floor(profile.height * scale)), scale, uiScale, profile };
     }
 
     _getMenuFloatOffset() {
@@ -1471,19 +1493,23 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         contentWidth = Math.max(1, contentWidth);
         contentHeight = Math.max(1, contentHeight);
         this._menuContentSize = {width: contentWidth, height: contentHeight};
-        const mode = Win11MenuApplet.ICON_MODES[this.iconSizeMode] || Win11MenuApplet.ICON_MODES.standard;
+        const mode = Win11MenuApplet.MENU_REF;
         const scale = geometry.scale;
         const logicalScale = scale / geometry.uiScale;
-        const cols = mode.cols;
+        const cols = geometry.profile.cols;
         const iconSize = mode.icon * logicalScale;
         const iconBox = mode.box * scale;
-        const pinned = {cols, cellW: Math.max(1, Math.floor(Win11MenuApplet.MENU_REF.gridWidth * scale / cols)),
+        // The scroll sections retain native 26px side padding, and folder overlay/card retain
+        // 28px + 24px per side (CSS logical pixels). Respect unusually thick theme chrome too.
+        const gridWidth = Math.max(1, Math.min(geometry.profile.gridWidth * scale, contentWidth - 52 * geometry.uiScale));
+        const cellW = Math.max(1, Math.floor(gridWidth / cols));
+        const pinned = {cols, cellW,
             cellH: Math.max(1, Math.round(mode.cellH * scale)),
             iconSize, iconBox, scale, logicalScale,
-            mergeInset: 17 / 76 * (Win11MenuApplet.MENU_REF.gridWidth * scale / cols),
+            mergeInset: 17 / 76 * cellW,
             mergeTop: 6 * scale, mergeBottom: mode.mergeBottom * scale};
         this._layoutMetrics = {pinned, folder: {cols: 4,
-            cellW: Math.max(1, Math.round(mode.folderCellW * scale)),
+            cellW: Math.max(1, Math.min(Math.round(mode.folderCellW * scale), Math.floor((contentWidth - 104 * geometry.uiScale) / 4))),
             cellH: Math.max(1, Math.round(mode.folderCellH * scale)),
             iconSize, iconBox, scale, logicalScale}};
         this.applicationIconSize = iconSize;
@@ -2063,6 +2089,9 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this.searchResultsColumns.add(this.searchPreviewPane, { expand: false, y_fill: true });
 
         this.searchResultsBox.add(this.searchFilterBar, { expand: false, x_fill: true });
+        this.searchStatusLabel = new St.Label({ style_class: 'win11-search-category-label', visible: false });
+        this.searchStatusLabel.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+        this.searchResultsBox.add(this.searchStatusLabel, { expand: false, x_fill: true });
         this.searchResultsBox.add(this.searchResultsColumns, { expand: true, x_fill: true, y_fill: true });
 
         this.bodyContainer.add(this.searchResultsBox, { expand: true, x_fill: true, y_fill: true });
@@ -3413,6 +3442,103 @@ class Win11MenuApplet extends Applet.TextIconApplet {
     /* =====================================================================
      * RECENT SECTION & RECENT APPS / FILES TRACKING
      * ===================================================================== */
+    _setupRecentFiles() {
+        this._recentPrivacyChangedId = this.privacy_settings.connect("changed::" + REMEMBER_RECENT_KEY,
+            () => this._onRecentFilesSettingChanged());
+        this._onRecentFilesSettingChanged();
+    }
+
+    _recentFilesEnabled() {
+        return !this._destroying && !!this.showRecentFiles && !!this.privacy_settings &&
+            this.privacy_settings.get_boolean(REMEMBER_RECENT_KEY);
+    }
+
+    _onRecentFilesSettingChanged() {
+        if (this._destroying) return;
+        if (!this._recentFilesEnabled()) {
+            if (this.floatingMenuBackdrop) this.closeFloatingMenus();
+            this._revokeRecentSearchResults();
+        }
+        if (this._recentFilesCache) {
+            this._recentFilesCache.refresh();
+        } else {
+            this._refreshRecentViews();
+            if (this._recentFilesEnabled() && !this._recentFilesInitId) {
+                this._recentFilesInitId = Mainloop.idle_add(() => {
+                    this._recentFilesInitId = 0;
+                    if (!this._recentFilesEnabled()) return GLib.SOURCE_REMOVE;
+                    this.RecentManager = Gtk.RecentManager.get_default();
+                    this._recentFilesCache = new RecentFiles.RecentFilesCache({
+                        manager: this.RecentManager, Gio, priority: GLib.PRIORITY_LOW,
+                        enabled: () => this._recentFilesEnabled(),
+                        schedule: fn => Mainloop.idle_add(fn),
+                        unschedule: id => Mainloop.source_remove(id),
+                        createIcon: (gicon, size) => new St.Icon({gicon, icon_size: size}),
+                        onChanged: () => this._refreshRecentViews()
+                    });
+                    this._recentChangedId = this.RecentManager.connect('changed', () => this._recentFilesCache.refresh());
+                    this._recentFilesCache.refresh();
+                    return GLib.SOURCE_REMOVE;
+                });
+            }
+        }
+    }
+
+    _revokeRecentSearchResults() {
+        if (this._destroying || !this._searchResultsList) return;
+        const selected = this._searchResultsList[this._selectedSearchResultIdx];
+        const oldIndex = this._selectedSearchResultIdx;
+        const oldCount = this._searchResultsList.length;
+        this._searchResultsList = this._searchResultsList.filter(item => {
+            // A duplicate hit is independent evidence, not a reason to lose its provenance.
+            if (item.kind !== 'file' || !item.fileSources || !item.fileSources.delete('recent') || item.fileSources.size) return true;
+            if (this._fileResultUris) this._fileResultUris.delete(item.uri);
+            if (item.actor) item.actor.destroy();
+            return false;
+        });
+        if (this._searchResultsList.length === oldCount) return;
+        if (selected && this._searchResultsList.includes(selected)) {
+            this._selectedSearchResultIdx = this._searchResultsList.indexOf(selected);
+        } else if (this._searchResultsList.length) {
+            this._selectSearchResult(Math.max(0, Math.min(oldIndex, this._searchResultsList.length - 1)));
+        } else {
+            this._selectedSearchResultIdx = -1;
+            if (this.searchPreviewPane) this.searchPreviewPane.destroy_all_children();
+            if (this.searchResultsListBox && this.searchEntry && this.searchEntry.get_text().trim()) {
+                // Only category labels remain; no independent result actors are rebuilt.
+                this.searchResultsListBox.destroy_all_children();
+                this._streamedFileHeader = null;
+                this._emptySearchLabel = new St.Label({text: this.t('no_results', this.searchEntry.get_text().trim()),
+                    style_class: 'win11-search-category-label'});
+                this.searchResultsListBox.add_actor(this._emptySearchLabel);
+                if (this._fileSearchPending || (this._fileResultsQueue && this._fileResultsQueue.length))
+                    this._emptySearchLabel.hide();
+                else
+                    this._emptySearchLabel.show();
+            }
+        }
+    }
+
+    _refreshRecentViews() {
+        if (this._destroying) return;
+        this._refreshRecentSection();
+        if (this.allRecentListBox) this._populateAllRecentSubView();
+        this._refreshSearchHomeView();
+    }
+
+    _destroyRecentFiles() {
+        this._cancelRecentRender();
+        if (this._recentFilesInitId) Mainloop.source_remove(this._recentFilesInitId);
+        this._recentFilesInitId = 0;
+        if (this._recentChangedId && this.RecentManager) this.RecentManager.disconnect(this._recentChangedId);
+        this._recentChangedId = 0;
+        if (this._recentPrivacyChangedId && this.privacy_settings) this.privacy_settings.disconnect(this._recentPrivacyChangedId);
+        this._recentPrivacyChangedId = 0;
+        if (this._recentFilesCache) this._recentFilesCache.destroy();
+        this._recentFilesCache = null;
+        this.RecentManager = null;
+    }
+
     recordRecentApp(appId) {
         if (!appId)
             return;
@@ -3455,6 +3581,32 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         }
     }
 
+    _openFileLocation(uri) {
+        // get_parent/get_uri are path operations, not filesystem reads. This
+        // helper is also used by full file search, independent of recent privacy.
+        try {
+            let parent = Gio.File.new_for_uri(uri).get_parent();
+            if (parent) this.launchRecentUri(parent.get_uri());
+        } catch (e) { global.logError(e); }
+    }
+
+    _removeRecentFile(uri) {
+        if (!this.RecentManager || !this._getRecentFiles().some(info => info.uri === uri)) return;
+        try {
+            // Remove the history bookmark only. Never trash/delete the file.
+            this.RecentManager.remove_item(uri);
+            this._recentFilesCache.refresh();
+        } catch (e) { global.logError(e); }
+    }
+
+    _showRecentFileContextMenu(item, anchor) {
+        this._showFloatingMenuAtActor(anchor, [
+            {label: this.t("open"), icon: 'document-open-symbolic', action: () => this.launchRecentUri(item.uri)},
+            {label: this.t("open_file_location"), icon: 'folder-open-symbolic', action: () => this._openFileLocation(item.uri)},
+            {label: this.t("remove_from_recents"), icon: 'list-remove-symbolic', action: () => this._removeRecentFile(item.uri)}
+        ]);
+    }
+
     _formatRelativeTime(timestampSec) {
         if (!timestampSec)
             return this.t("recently_added");
@@ -3472,69 +3624,40 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         return this.t("days_ago", days);
     }
 
+    _getRecentFiles() {
+        // Snapshot-only API for Start, Search Home, and incremental search.
+        if (this._destroying || !this.showRecentFiles || !this.privacy_settings ||
+            !this.privacy_settings.get_boolean(REMEMBER_RECENT_KEY)) return [];
+        return this._recentFilesCache ? this._recentFilesCache.getFiles() : [];
+    }
+
     _getCombinedRecentItems(maxCount = 24) {
         let items = [];
-
-        // 1. Recently launched apps
         let recentAppEntries = this.showRecentApps && Array.isArray(this.recentApps) ? this.recentApps : [];
         for (let entry of recentAppEntries) {
             let app = appsys.lookup_app(entry.id);
             if (app) {
                 items.push({
-                    kind: 'app',
-                    app: app,
+                    kind: 'app', app,
                     title: app.get_name(),
-                    subtitle: this.t("recently_added"),
+                    subtitle: this._formatRelativeTime(entry.timestamp),
                     pathText: app.get_description() || this.t("recently_added"),
                     timeText: this._formatRelativeTime(entry.timestamp),
                     timestamp: entry.timestamp || 0
                 });
             }
         }
-
-        // 2. Recent files from Cinnamon DocManager
-        let rememberRecent = this.showRecentFiles && this.privacy_settings.get_boolean(REMEMBER_RECENT_KEY);
-        if (rememberRecent && this.RecentManager && this.RecentManager._infosByTimestamp) {
-            let recents = this.RecentManager._infosByTimestamp.filter(info => !info.name.startsWith("."));
-            for (let info of recents) {
-                let ts = info.mtime || 0;
-                let shortPath = shorten_path(info.uriDecoded || info.uri, info.name);
-                let timeStr = ts > 0 ? this._formatRelativeTime(ts) : shortPath;
-                items.push({
-                    kind: 'file',
-                    docInfo: info,
-                    uri: info.uri,
-                    title: info.name,
-                    subtitle: timeStr,
-                    pathText: shortPath,
-                    timeText: timeStr,
-                    timestamp: ts
-                });
-            }
+        for (let info of this._getRecentFiles()) {
+            let timeText = this._formatRelativeTime(info.mtime);
+            items.push({
+                kind: 'file', docInfo: info, uri: info.uri, title: info.name,
+                subtitle: timeText,
+                pathText: shorten_path(info.uriDecoded || info.uri, info.name),
+                timeText, timestamp: info.mtime
+            });
         }
-
-        // If user has fewer than 6 items on a fresh setup, include a few common apps so Recent section looks rich
-        if (this.showRecentApps && items.length < 6) {
-            let fallbackApps = ["nemo.desktop", "org.gnome.Terminal.desktop", "cinnamon-settings.desktop", "firefox.desktop"];
-            for (let id of fallbackApps) {
-                if (items.length >= 6)
-                    break;
-                let app = appsys.lookup_app(id);
-                if (app && !items.some(x => x.kind === 'app' && x.app.get_id() === id)) {
-                    items.push({
-                        kind: 'app',
-                        app: app,
-                        title: app.get_name(),
-                        subtitle: this.t("recently_added"),
-                        pathText: app.get_description() || "",
-                        timeText: this.t("recently_added"),
-                        timestamp: 0
-                    });
-                }
-            }
-        }
-
-        return items.slice(0, maxCount);
+        // Limit only after mixing actual history; never manufacture recent apps.
+        return items.sort((a, b) => b.timestamp - a.timestamp).slice(0, maxCount);
     }
 
     _refreshRecentSection() {
@@ -3658,8 +3781,9 @@ class Win11MenuApplet extends Applet.TextIconApplet {
                     this.launchRecentUri(item.uri);
                 }
                 return Clutter.EVENT_STOP;
-            } else if (event.get_button() === Clutter.BUTTON_SECONDARY && item.kind === 'app') {
-                this.showAppContextMenu(item.app, btn);
+            } else if (event.get_button() === Clutter.BUTTON_SECONDARY) {
+                if (item.kind === 'app') this.showAppContextMenu(item.app, btn);
+                else if (item.uri) this._showRecentFileContextMenu(item, btn);
                 return Clutter.EVENT_STOP;
             }
             return Clutter.EVENT_PROPAGATE;
@@ -3668,13 +3792,33 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         return btn;
     }
 
+    _cancelRecentRender() {
+        this._recentRenderGeneration = (this._recentRenderGeneration || 0) + 1;
+        if (this._recentRenderId) Mainloop.source_remove(this._recentRenderId);
+        this._recentRenderId = 0;
+    }
+
     _populateAllRecentSubView() {
+        this._cancelRecentRender();
         this.allRecentListBox.destroy_all_children();
-        let allRecent = this._getCombinedRecentItems(30);
-        allRecent.forEach(item => {
-            let row = this._createRecentItemWidget(item, true);
-            this.allRecentListBox.add_actor(row);
-        });
+        let allRecent = this._getCombinedRecentItems(Infinity);
+        if (allRecent.length === 0) {
+            this.allRecentListBox.add_actor(new St.Label({
+                text: this.t("no_recent_items"), style_class: 'win11-recent-item-subtitle'
+            }));
+            return;
+        }
+        let generation = this._recentRenderGeneration;
+        let cursor = 0;
+        const appendBatch = () => {
+            this._recentRenderId = 0;
+            if (this._destroying || generation !== this._recentRenderGeneration) return GLib.SOURCE_REMOVE;
+            let end = Math.min(cursor + 20, allRecent.length);
+            while (cursor < end) this.allRecentListBox.add_actor(this._createRecentItemWidget(allRecent[cursor++], true));
+            if (cursor < allRecent.length) this._recentRenderId = Mainloop.idle_add(appendBatch);
+            return GLib.SOURCE_REMOVE;
+        };
+        appendBatch();
     }
 
     /* =====================================================================
@@ -3784,7 +3928,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         const gapCss = Math.round(29 * logicalScale);
         const icon = Math.round(36 * logicalScale);
         const mini = Math.round(68 * scale);
-        const width = Win11MenuApplet.MENU_REF.gridWidth * scale;
+        const width = metrics.cols * metrics.cellW;
         return { tile, gap, gapCss, icon, mini, cols: Math.max(1, Math.floor((width + gap) / (tile + gap))) };
     }
 
@@ -4248,8 +4392,9 @@ class Win11MenuApplet extends Applet.TextIconApplet {
                     else if (item.uri)
                         this.launchRecentUri(item.uri);
                     return Clutter.EVENT_STOP;
-                } else if (event.get_button() === Clutter.BUTTON_SECONDARY && item.kind === 'app') {
-                    this.showAppContextMenu(item.app, row);
+                } else if (event.get_button() === Clutter.BUTTON_SECONDARY) {
+                    if (item.kind === 'app') this.showAppContextMenu(item.app, row);
+                    else if (item.uri) this._showRecentFileContextMenu(item, row);
                     return Clutter.EVENT_STOP;
                 }
                 return Clutter.EVENT_PROPAGATE;
@@ -4403,6 +4548,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
                 this.searchEntry.disconnect(this._searchClearClickedId);
                 this._searchClearClickedId = 0;
             }
+            this._cancelFileSearch();
             this.searchEntry.set_secondary_icon(null);
             this.searchResultsBox.hide();
 
@@ -4419,6 +4565,10 @@ class Win11MenuApplet extends Applet.TextIconApplet {
     }
 
     _doSearch(rawPattern) {
+        this._cancelFileSearch();
+        const generation = this._searchGeneration;
+        this._emptySearchLabel = null;
+        this._streamedFileHeader = null;
         let lowerPattern = AppUtils.decomp_unstripped(rawPattern);
         let pattern = AppUtils.decomp_stripped(rawPattern);
 
@@ -4430,7 +4580,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
 
         // 1. Match Installed Applications (using menu@cinnamon.org's exact MATCH_ADDERS scoring)
         let appMatches = [];
-        if (this._searchFilter === "all" || this._searchFilter === "apps" || this._searchFilter === "settings") {
+        if (pattern && (this._searchFilter === "all" || this._searchFilter === "apps" || this._searchFilter === "settings")) {
             for (let [app, categories] of this._allAppsData) {
                 let isSettingsApp = categories.some(c =>
                     ["preferences", "administration", "settings"].includes(c.toLowerCase())
@@ -4464,20 +4614,22 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             appMatches.sort((a, b) => (a.matchIndex - b.matchIndex) || a.name.localeCompare(b.name));
         }
 
-        // 2. Match Favorite Documents & Recent Files
+        // 2. Match Favorite Documents & Recent Files; preserve punctuation in filenames.
+        const filenamePattern = new RegExp(Util.escapeRegExp(lowerPattern.replace(/\s/g, '')));
         let docMatches = [];
         if (this._searchFilter === "all" || this._searchFilter === "docs") {
             try {
                 let favInfos = XApp.Favorites.get_default().get_favorites(null);
                 for (let info of favInfos) {
                     let s = AppUtils.decomp_string(info.display_name).replace(/\s/g, '');
-                    let res = s.match(regexpPattern);
+                    let res = s.match(filenamePattern);
                     if (res) {
                         docMatches.push({
                             kind: 'file',
                             name: info.display_name,
                             description: shorten_path(info.uri, info.display_name),
                             uri: info.uri,
+                            fileSources: new Set(['favorite']),
                             icon: new St.Icon({
                                 gicon: Gio.content_type_get_icon(info.cached_mimetype),
                                 icon_size: 28
@@ -4488,20 +4640,28 @@ class Win11MenuApplet extends Applet.TextIconApplet {
                 }
             } catch (e) {}
 
-            if (this.privacy_settings.get_boolean(REMEMBER_RECENT_KEY) && this.RecentManager) {
-                let recents = this.RecentManager._infosByTimestamp.filter(info => !info.name.startsWith("."));
+            const docMatchesByUri = new Map(docMatches.map(item => [item.uri, item]));
+            if (this.privacy_settings.get_boolean(REMEMBER_RECENT_KEY)) {
+                let recents = this._getRecentFiles();
                 for (let info of recents) {
                     let s = AppUtils.decomp_string(info.name).replace(/\s/g, '');
-                    let res = s.match(regexpPattern);
+                    let res = s.match(filenamePattern);
                     if (res) {
+                        const existing = docMatchesByUri.get(info.uri);
+                        if (existing) {
+                            existing.fileSources.add('recent');
+                            continue;
+                        }
                         docMatches.push({
                             kind: 'file',
                             name: info.name,
                             description: shorten_path(info.uriDecoded || info.uri, info.name),
                             uri: info.uri,
+                            fileSources: new Set(['recent']),
                             icon: info.createIcon(28),
                             matchIndex: res.index
                         });
+                        docMatchesByUri.set(info.uri, docMatches[docMatches.length - 1]);
                     }
                 }
             }
@@ -4544,21 +4704,30 @@ class Win11MenuApplet extends Applet.TextIconApplet {
                 text: this.t("no_results", rawPattern),
                 style_class: 'win11-search-category-label'
             });
+            this._emptySearchLabel = emptyLbl;
             this.searchResultsListBox.add_actor(emptyLbl);
             this.searchPreviewPane.destroy_all_children();
         }
+
+        // File IO lives in a separate process. Starting it from an idle keeps the input path bounded.
+        if (this._searchFilter === "all" || this._searchFilter === "docs")
+            this._scheduleFileSearch(rawPattern, generation);
 
         // 3. Query Cinnamon SearchProviderManager asynchronously (just like menu@cinnamon.org)
         if (this._searchFilter === "all" || this._searchFilter === "settings") {
             SearchProviderManager.launch_all(lowerPattern, (provider, results) => {
                 try {
-                    if (!results || results.length === 0)
+                    if (this._destroying || generation !== this._searchGeneration || !this.menu.isOpen ||
+                        !results || results.length === 0)
                         return;
                     let addedHeader = false;
+                    let added = 0;
                     for (let result of results) {
+                        if (added >= 20) break;
                         if (result.type === 'software')
                             continue;
                         if (!addedHeader) {
+                            this._hideEmptySearchLabel();
                             let hdr = new St.Label({
                                 text: this.t("settings_header"),
                                 style_class: 'win11-search-category-label'
@@ -4585,6 +4754,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
                             description: result.description || "",
                             icon: iconActor
                         });
+                        added++;
                         if (this._selectedSearchResultIdx === -1) {
                             this._selectSearchResult(0);
                         }
@@ -4596,11 +4766,162 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         }
     }
 
+    _createFileSearchClient() {
+        let roots;
+        try {
+            const configured = GLib.getenv('WIN11_MENU_SEARCH_ROOTS');
+            if (configured) {
+                const parsed = JSON.parse(configured);
+                if (Array.isArray(parsed) && parsed.length && parsed.every(p => typeof p === 'string' && GLib.path_is_absolute(p)))
+                    roots = parsed;
+            }
+        } catch (e) { /* Ignore an invalid optional roots override. */ }
+        return new FileSearch.FileSearchClient({
+            scriptPath: GLib.build_filenamev([this._appletPath, 'file-search-worker.py']),
+            databasePath: GLib.getenv('WIN11_MENU_SEARCH_DATABASE') ||
+                GLib.build_filenamev([GLib.get_user_cache_dir(), 'win11-menu', 'file-search', 'names.sqlite']),
+            roots,
+            onEvent: event => this._onFileSearchEvent(event)
+        });
+    }
+
+    _scheduleFileSearch(query, generation) {
+        this._fileSearchId = generation;
+        this._fileSearchPending = true;
+        this._fileResultCount = 0;
+        this._fileResultsQueue = [];
+        this._fileResultUris = new Set(this._searchResultsList.filter(r => r.uri).map(r => r.uri));
+        this._setFileSearchStatus('file_search_searching');
+        if (this._emptySearchLabel) this._emptySearchLabel.hide();
+        this._fileSearchStartId = Mainloop.idle_add(() => {
+            this._fileSearchStartId = 0;
+            if (this._destroying || generation !== this._searchGeneration || !this.menu.isOpen)
+                return false;
+            try {
+                if (!this._fileSearchClient)
+                    this._fileSearchClient = this._createFileSearchClient();
+                this._fileSearchClient.search(generation, query, 80);
+            } catch (e) {
+                this._fileSearchPending = false;
+                this._setFileSearchStatus('file_search_unavailable');
+            }
+            return false;
+        });
+    }
+
+    _setFileSearchStatus(key) {
+        if (!this.searchStatusLabel) return;
+        if (key) {
+            this.searchStatusLabel.set_text(this.t(key));
+            this.searchStatusLabel.show();
+        } else {
+            this.searchStatusLabel.hide();
+        }
+    }
+
+    _hideEmptySearchLabel() {
+        if (this._emptySearchLabel) {
+            this._emptySearchLabel.hide();
+            this._emptySearchLabel = null;
+        }
+    }
+
+    _onFileSearchEvent(event) {
+        if (this._destroying || !event || event.id !== this._fileSearchId ||
+            event.id !== this._searchGeneration || !this.menu.isOpen)
+            return;
+        if (event.type === 'results') {
+            for (const item of event.items || []) {
+                if (!item || typeof item.path !== 'string' || !item.path.startsWith('/') || typeof item.name !== 'string') continue;
+                const uri = Gio.File.new_for_path(item.path).get_uri();
+                if (this._fileResultUris.has(uri)) {
+                    const existing = this._searchResultsList.find(row => row.kind === 'file' && row.uri === uri) ||
+                        this._fileResultsQueue.find(row => row.uri === uri);
+                    if (existing) {
+                        if (!existing.fileSources) existing.fileSources = new Set();
+                        existing.fileSources.add('filesystem');
+                    }
+                    continue;
+                }
+                if (this._fileResultCount + this._fileResultsQueue.length >= 80) continue;
+                this._fileResultUris.add(uri);
+                this._fileResultsQueue.push({kind: 'file', name: item.name, uri, fileSources: new Set(['filesystem']),
+                    path: item.path, description: item.path, isDirectory: !!item.is_dir});
+            }
+            if (!this._fileSearchRenderId) this._renderFileSearchBatch();
+        } else if (event.type === 'status') {
+            this._setFileSearchStatus(event.indexing ? 'file_search_indexing' : 'file_search_searching');
+        } else if (event.type === 'done') {
+            this._fileSearchPending = false;
+            this._setFileSearchStatus(event.truncated ? 'file_search_limited' : null);
+            if (this._emptySearchLabel && this._searchResultsList.length === 0 && this._fileResultsQueue.length === 0)
+                this._emptySearchLabel.show();
+        } else if (event.type === 'error') {
+            this._fileSearchPending = false;
+            this._setFileSearchStatus('file_search_unavailable');
+        }
+    }
+
+    _renderFileSearchBatch() {
+        this._fileSearchRenderId = 0;
+        if (this._destroying || this._fileSearchId !== this._searchGeneration || !this.menu.isOpen) return;
+        const batch = this._fileResultsQueue.splice(0, 8);
+        if (batch.length) {
+            this._hideEmptySearchLabel();
+            if (!this._streamedFileHeader) {
+                this._streamedFileHeader = new St.Label({text: this.t('files_header'), style_class: 'win11-search-category-label'});
+                this.searchResultsListBox.add_actor(this._streamedFileHeader);
+            }
+            for (const item of batch) {
+                this._addSearchResultRow(item);
+                this._fileResultCount++;
+            }
+            if (this._selectedSearchResultIdx === -1) this._selectSearchResult(0);
+        }
+        if (this._fileResultsQueue.length) {
+            this._fileSearchRenderId = Mainloop.idle_add(() => {
+                this._renderFileSearchBatch();
+                return false;
+            });
+        }
+    }
+
+    _cancelFileSearch() {
+        const id = this._fileSearchId;
+        this._searchGeneration = (this._searchGeneration || 0) + 1;
+        this._fileSearchId = null;
+        this._fileSearchPending = false;
+        for (const key of ['_fileSearchStartId', '_fileSearchRenderId']) {
+            if (this[key]) Mainloop.source_remove(this[key]);
+            this[key] = 0;
+        }
+        this._fileResultsQueue = [];
+        if (this._fileSearchClient && id !== null && id !== undefined)
+            this._fileSearchClient.cancel(id);
+        this._setFileSearchStatus(null);
+    }
+
+    _destroyFileSearch() {
+        this._cancelFileSearch();
+        if (this._fileSearchClient) {
+            this._fileSearchClient.destroy();
+            this._fileSearchClient = null;
+        }
+    }
+
+    _showFileSearchContextMenu(item, anchor) {
+        this._showFloatingMenuAtActor(anchor, [
+            {label: this.t('open'), icon: 'document-open-symbolic', action: () => this.launchRecentUri(item.uri)},
+            {label: this.t('open_file_location'), icon: 'folder-open-symbolic', action: () => this._openFileLocation(item.uri)}
+        ]);
+    }
+
     _addSearchResultRow(matchItem) {
-        let idx = this._searchResultsList.length;
         let row = new St.BoxLayout({
             vertical: false,
             style_class: 'win11-search-result-item',
+            min_width: 0,
+            natural_width: 0,
             reactive: true,
             track_hover: true,
             x_expand: true
@@ -4611,17 +4932,22 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             icon = createAppIcon(matchItem.app, 28);
         } else if (matchItem.icon) {
             icon = matchItem.icon;
+        } else if (matchItem.kind === 'file') {
+            icon = new St.Icon({ icon_name: matchItem.isDirectory ? 'folder' : 'text-x-generic', icon_size: 28 });
         } else {
             icon = new St.Icon({ icon_name: 'application-x-executable', icon_size: 28 });
         }
 
         let textBox = new St.BoxLayout({
             vertical: true,
+            min_width: 0,
+            natural_width: 0,
             x_expand: true,
             y_align: Clutter.ActorAlign.CENTER
         });
         let nameLbl = new St.Label({
             text: matchItem.name,
+            min_width: 0,
             style_class: 'win11-recent-item-title'
         });
         nameLbl.clutter_text.ellipsize = Pango.EllipsizeMode.END;
@@ -4640,14 +4966,18 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         row.add(textBox, { expand: true, x_fill: true, y_align: St.Align.MIDDLE });
 
         row.connect('enter-event', () => {
-            this._selectSearchResult(idx);
+            if (!this._destroying) this._selectSearchResult(this._searchResultsList.indexOf(matchItem));
         });
         row.connect('button-release-event', (actor, event) => {
+            if (this._destroying || !this._searchResultsList.includes(matchItem)) return Clutter.EVENT_PROPAGATE;
             if (event.get_button() === Clutter.BUTTON_PRIMARY) {
                 this._activateSearchResult(matchItem);
                 return Clutter.EVENT_STOP;
             } else if (event.get_button() === Clutter.BUTTON_SECONDARY && matchItem.kind === 'app') {
                 this.showAppContextMenu(matchItem.app, row);
+                return Clutter.EVENT_STOP;
+            } else if (event.get_button() === Clutter.BUTTON_SECONDARY && matchItem.kind === 'file') {
+                this._showFileSearchContextMenu(matchItem, row);
                 return Clutter.EVENT_STOP;
             }
             return Clutter.EVENT_PROPAGATE;
@@ -4684,7 +5014,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         if (item.kind === 'app') {
             iconBin.set_child(createAppIcon(item.app, 52));
         } else {
-            iconBin.set_child(new St.Icon({ icon_name: 'text-x-generic', icon_size: 48 }));
+            iconBin.set_child(new St.Icon({ icon_name: item.isDirectory ? 'folder' : 'text-x-generic', icon_size: 48 }));
         }
 
         let titleLbl = new St.Label({
@@ -4741,6 +5071,8 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         };
 
         addActionBtn('xsi-go-next-symbolic', this.t('open'), () => this._activateSearchResult(item));
+        if (item.kind === 'file' && item.uri)
+            addActionBtn('folder-open-symbolic', this.t('open_file_location'), () => this._openFileLocation(item.uri));
 
         if (item.kind === 'app' && item.app) {
             let appId = item.app.get_id();
@@ -4894,6 +5226,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             this._switchToPopupMode(this._currentPopupMode || "start", this._currentPopupMode === "search");
             this._queueAllAppsMaterialize();
         } else {
+            this._cancelFileSearch();
             this.closeFloatingMenus();
             this._closeFolder();
             if (this._searchBoxActive)
@@ -4919,6 +5252,8 @@ class Win11MenuApplet extends Applet.TextIconApplet {
 
     destroy() {
         this._destroying = true;
+        this._destroyRecentFiles();
+        this._destroyFileSearch();
         if (this._geometrySignals) this._geometrySignals.disconnectAllSignals();
         this._cancelTransientInteractions();
         this._cleanupCacheMonitor();
