@@ -372,8 +372,8 @@ class PinnedTile {
             this.activate();
             return Clutter.EVENT_STOP;
         } else if (button === Clutter.BUTTON_SECONDARY) {
-            if (this.itemData.type === 'app' && this.app) {
-                this.applet.showAppContextMenu(this.app, this.actor, { isPinned: true });
+            if (this.itemData.type === 'app') {
+                this.applet.showAppContextMenu(this.app, this.actor, { isPinned: true, appId: this.itemData.id });
             } else if (this.itemData.type === 'folder') {
                 this.applet._openFolder(this.itemData.id, true);
             }
@@ -512,12 +512,11 @@ class FolderAppTile {
                 this.applet.launchApp(this.app);
             return Clutter.EVENT_STOP;
         } else if (button === Clutter.BUTTON_SECONDARY) {
-            if (this.app) {
-                this.applet.showAppContextMenu(this.app, this.actor, {
-                    isPinned: true,
-                    folderId: this.folderData.id
-                });
-            }
+            this.applet.showAppContextMenu(this.app, this.actor, {
+                isPinned: true,
+                appId: this.appId,
+                folderId: this.folderData.id
+            });
             return Clutter.EVENT_STOP;
         }
         return Clutter.EVENT_PROPAGATE;
@@ -882,7 +881,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this._geometrySignals.connect(Main.layoutManager, "monitors-changed", () => this._onLayoutChanged());
         this._geometrySignals.connect(global.display, "workareas-changed", () => this._onLayoutChanged());
 
-        appsys.connect('installed-changed', () => this._fullRefresh());
+        this._geometrySignals.connect(appsys, 'installed-changed', () => this._onInstalledAppsChanged());
         AppFavorites.getAppFavorites().connect('changed', () => this._refreshFooter());
         this._setupRecentFiles();
 
@@ -2498,8 +2497,12 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this._cancelFolderRenameTimers();
         this._handlePinnedGridDragOut();
         this._stopDndTracking();
-        if (this._dndCompletionTimer) Mainloop.source_remove(this._dndCompletionTimer);
-        this._dndCompletionTimer = 0;
+        // A closed menu cancels the drop, not the pending registry cleanup.
+        // Keep that completion timer until Cinnamon releases its drag source.
+        if (!this._installedAppsRefreshPending || this._destroying) {
+            if (this._dndCompletionTimer) Mainloop.source_remove(this._dndCompletionTimer);
+            this._dndCompletionTimer = 0;
+        }
         this._pendingDndCommit = null;
         this._dragState = null;
         this._folderDragState = null;
@@ -2894,9 +2897,20 @@ class Win11MenuApplet extends Applet.TextIconApplet {
     }
 
     showAppContextMenu(app, anchorActor, options = {}) {
-        if (!app)
+        const appId = options.appId || (app && app.get_id());
+        if (!appId) return;
+        // A stale tile can outlive its desktop entry. Unpin needs only its ID;
+        // never offer launch/install-dependent actions for a missing application.
+        app = appsys.lookup_app(appId);
+        if (!app) {
+            if (this.isAppPinned(appId)) {
+                this._showFloatingMenuAtActor(anchorActor, [{
+                    label: this.t('unpin_from_start'), icon: 'xsi-starred',
+                    action: () => this.unpinApp(appId)
+                }]);
+            }
             return;
-        let appId = app.get_id();
+        }
         let isPinned = this.isAppPinned(appId);
         let items = [];
 
@@ -3045,24 +3059,56 @@ class Win11MenuApplet extends Applet.TextIconApplet {
     /* =====================================================================
      * PINNED APPS MANAGEMENT, DND AUTO-ARRANGE & FOLDER CREATION
      * ===================================================================== */
+    _onInstalledAppsChanged() {
+        if (this._destroying) return;
+        if (this._activeDndSource || DND.isDragging()) {
+            this._installedAppsRefreshPending = true;
+            this._scheduleDndCompletion();
+            return;
+        }
+        this._installedAppsRefreshPending = false;
+        this._pruneUnavailablePinnedItems();
+        this.closeFloatingMenus();
+        if (this._openFolderId) {
+            const folder = this.pinnedItems.find(item => item.type === 'folder' && item.id === this._openFolderId);
+            if (folder) this._rebuildFolderGrid(folder);
+            else this._closeFolder();
+        }
+        this._fullRefresh();
+    }
+
+    _pruneUnavailablePinnedItems() {
+        if (!Array.isArray(this.pinnedItems)) return false;
+        let changed = false;
+        const cleaned = [];
+        for (const item of this.pinnedItems) {
+            if (item.type === 'app' && !appsys.lookup_app(item.id)) {
+                changed = true;
+            } else if (item.type === 'folder' && Array.isArray(item.apps)) {
+                const apps = item.apps.filter(id => appsys.lookup_app(id));
+                if (apps.length === 0) {
+                    changed = true;
+                } else if (apps.length !== item.apps.length) {
+                    changed = true;
+                    cleaned.push({...item, apps});
+                } else {
+                    cleaned.push(item);
+                }
+            } else {
+                cleaned.push(item);
+            }
+        }
+        if (changed) {
+            this.pinnedItems.splice(0, this.pinnedItems.length, ...cleaned);
+            this._savePinnedItems();
+        }
+        return changed;
+    }
+
     _ensureInitialPinnedItems() {
         if (Array.isArray(this.pinnedItems) && this.pinnedItems.length > 0) {
-            // Filter out any uninstalled apps
-            let cleaned = [];
-            for (let item of this.pinnedItems) {
-                if (item.type === 'folder' && Array.isArray(item.apps)) {
-                    let validApps = item.apps.filter(id => appsys.lookup_app(id) != null);
-                    if (validApps.length >= 1) {
-                        cleaned.push({ type: 'folder', id: item.id, name: item.name, apps: validApps });
-                    }
-                } else if (item.type === 'app' && appsys.lookup_app(item.id) != null) {
-                    cleaned.push({ type: 'app', id: item.id });
-                }
-            }
-            if (cleaned.length > 0) {
-                this.pinnedItems = cleaned;
-                return;
-            }
+            this._pruneUnavailablePinnedItems();
+            return;
         }
 
         // Seed default pinned apps from Cinnamon favorites + common system apps
@@ -3365,6 +3411,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             if (!commit) this._resetPinnedTilesPositions();
             this._dragState = null;
             if (commit) commit();
+            if (this._installedAppsRefreshPending) this._onInstalledAppsChanged();
             if (this._deferredFolderRefresh) {
                 this._deferredFolderRefresh = false;
                 const folder = this.pinnedItems.find(item => item.type === 'folder' && item.id === this._openFolderId);
