@@ -441,6 +441,108 @@ class SingleInstanceTest(TempDirsMixin, unittest.TestCase):
         self.assertEqual(app.get_application_id(), self.mod.application_id(INSTANCE))
         self.assertFalse(app.get_flags() & Gio.ApplicationFlags.NON_UNIQUE)
 
+    @unittest.skipUnless(Gtk.init_check()[0], "needs a display")
+    def test_reopening_after_icon_change_rebuilds_destroyed_window(self):
+        app = self.mod.SettingsApplication(INSTANCE, "layout", self.spices, self.cache)
+        # Exercise the actual application activation method and real Gtk widgets,
+        # without registering this fixture as the user's application instance.
+        with unittest.mock.patch.object(app, "add_window"):
+            app.do_activate()
+            first = app.window
+            self.addCleanup(first.destroy)
+            chooser = first.controls["menu-icon"]
+            if hasattr(chooser, "set_icon"):
+                chooser.set_icon("cs-xlet-error")
+            else:
+                chooser.set_text("cs-xlet-error")
+            first.close_now()
+            app.do_activate()
+            reopened = app.window
+            self.addCleanup(reopened.destroy)
+            self.assertIsNot(reopened, first, "a destroyed Gtk window reappears as a blank page")
+            self.assertIsNotNone(reopened.get_child())
+            self.assertEqual(reopened.stack.get_visible_child_name(), "layout")
+            self.assertEqual(len(reopened.controls), 29)
+            self.assertEqual(self.read_config()["menu-icon"]["value"], "cs-xlet-error")
+
+    @unittest.skipUnless(Gtk.init_check()[0], "needs a display")
+    def test_closing_main_window_flushes_changes_and_quits_even_with_auxiliary_windows(self):
+        for close_method in ("x", "ok", "escape"):
+            with self.subTest(close=close_method):
+                self.write_config(fixture_data())
+                before = self.read_config()
+                app = self.mod.SettingsApplication(INSTANCE, "layout", self.spices, self.cache)
+                # Hidden chooser/auxiliary windows must not keep a stale helper alive.
+                with unittest.mock.patch.object(app, "add_window"), unittest.mock.patch.object(app, "quit") as quit_app:
+                    app.do_activate()
+                    win = app.window
+                    self.addCleanup(win.destroy)
+                    win.language_combo.set_active_id("ptbr")
+                    chooser = win.controls["menu-icon"]
+                    if hasattr(chooser, "set_icon"):
+                        chooser.set_icon("folder")
+                    else:
+                        chooser.set_text("folder")
+                    self.assertTrue(win._pending)
+                    if close_method == "ok":
+                        win.ok()
+                    elif close_method == "escape":
+                        key_event(win, Gdk.KEY_Escape)
+                    else:
+                        win.close_now()
+                    quit_app.assert_called_once_with()
+                    self.assertIsNone(app.window)
+                    self.assertEqual(win._timer, 0)
+                    expected = copy.deepcopy(before)
+                    expected["menu-icon"]["value"] = "folder"
+                    if close_method == "ok":
+                        expected["language"]["value"] = "ptbr"
+                    self.assertEqual(self.read_config(), expected)
+
+    @unittest.skipUnless(Gtk.init_check()[0] and os.environ.get("DBUS_SESSION_BUS_ADDRESS"),
+                         "needs a display and a session bus")
+    def test_real_helper_exits_with_hidden_auxiliary_window_and_reopens_with_content(self):
+        import subprocess
+        import sys
+        instance = "lifecycle%d" % os.getpid()
+        with open(os.path.join(self.spices, instance + ".json"), "w", encoding="utf-8") as handle:
+            json.dump(fixture_data(), handle)
+        script = r'''
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("settings_lifecycle", sys.argv[1])
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+app = m.SettingsApplication(sys.argv[2], "layout", sys.argv[3], sys.argv[4])
+auxiliary = []; timed_out = []
+def close_main():
+    assert app.window.get_child() is not None
+    assert len(app.window.controls) == 29
+    aux = m.Gtk.Window(application=app); auxiliary.append(aux)
+    aux.hide()  # Reproduce an auxiliary window keeping the Gtk.Application alive.
+    picker = app.window.controls["menu-icon"]
+    if hasattr(picker, "set_icon"): picker.set_icon(sys.argv[5])
+    else: picker.set_text(sys.argv[5])
+    app.window.close_now()
+    return False
+def watchdog():
+    timed_out.append(True); app.quit(); return False
+app.connect_after("activate", lambda *_: m.GLib.idle_add(close_main))
+m.GLib.timeout_add(1500, watchdog)
+result = app.run([sys.argv[0]])
+for w in auxiliary: w.destroy()
+assert not timed_out, "closing settings left the helper running behind an auxiliary window"
+assert app.window is None
+print("EXIT_AFTER_MAIN_CLOSE", flush=True)
+sys.exit(result)
+'''
+        for icon in ("folder", "cs-xlet-error"):
+            result = subprocess.run([sys.executable, "-c", script, MODULE_PATH, instance,
+                                     self.spices, self.cache, icon],
+                                    env=os.environ.copy(), text=True, capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("EXIT_AFTER_MAIN_CLOSE", result.stdout)
+            with open(os.path.join(self.spices, instance + ".json"), encoding="utf-8") as handle:
+                self.assertEqual(json.load(handle)["menu-icon"]["value"], icon)
+
     @unittest.skipUnless(Gtk.init_check()[0] and os.environ.get("DBUS_SESSION_BUS_ADDRESS"),
                          "needs a display and a session bus")
     def test_second_launch_presents_the_first_window_and_exits(self):

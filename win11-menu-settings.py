@@ -974,10 +974,18 @@ class SettingsApplication(Gtk.Application):
         if self.window is None:
             instance_id, spices_dir, cache_dir = self._args
             self.window = SettingsWindow(ConfigStore(instance_id, spices_dir, cache_dir), page=self._page)
-            self.add_window(self.window)   # the app quits when this window is destroyed
+            self.add_window(self.window)
+            self.window.connect("destroy", self._on_window_destroyed)
             self.window.show_all()
             self.window.select_page(self._page)
         self.window.present()
+
+    def _on_window_destroyed(self, window):
+        if self.window is window:
+            self.window = None
+            # Native chooser dialogs may keep the application alive after its
+            # main window closes. Never reuse the destroyed Gtk.Window on activation.
+            self.quit()
 
 
 def main(argv=None):
