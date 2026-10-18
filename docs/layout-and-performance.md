@@ -68,3 +68,18 @@ Using the same 12-open `after-paint` method immediately before and after menu-si
 An actual menu query `relatorio` against an isolated three-file fixture returned two accented Portuguese filenames via the real GJS client and Python process. In a final run, result events arrived at **80.4 ms** and **94.1 ms**, before `done` at **141.4 ms**. Rapid query replacement kept only the latest matches; close/teardown restored the UI and modal count to zero. The worker's separate 50,001-file benchmark and scan scope are recorded in [file-search-engine.md](file-search-engine.md). User files were not recursively indexed by these validation fixtures.
 
 After the independent review's privacy fix, **237 Node tests + 82 Python tests** passed. A live Cinnamon actor fixture invoked the recent-privacy callback without changing the system's global preference: history-only results were removed, a same-URI recent+favorite result retained its actor/selection/preview, and revoking the final history row cleared all four preview children and showed the empty state. No scan was started by revocation. Settings, pins, app-launch history and temporary method overrides were restored; modal count returned to zero. The final build loaded on both installed instances, all three menu sizes were measured again, and the new session-log interval had no JS errors. These are local validation results, not a claim about remote CI.
+
+## Compact horizontal Start highlight
+
+The supplied `antes.png` / `depois.png` panel crops are both 189×64. The reference changes only the Start-button background: its horizontal bounds move from x=14…67 (54 px) to x=19…62 (44 px). The 38×38 icon keeps the same bounds and Search does not move.
+
+For horizontal panels, exchange up to 5 logical pixels of theme padding on each side for equal additional margin. This narrows the painted/hit area but preserves the outer applet's width, icon position and Search/neighbour spacing. Read the original theme after clearing the previous inline style, convert stage pixels by `ui_scale`, and clamp the exchange to available padding in compact themes. Top/bottom styling stays native; vertical panels retain their existing zero-padding behavior. Theme reads wait for stage attachment and the inset is recalculated on mapping/theme changes.
+
+Live verification after reloading both installed instances measured:
+
+| Panel height | Start before → after | Icon unchanged | Applet width unchanged |
+|---:|---:|---:|---:|
+| 47 px | 54 → 44 px | 38×38 px | 153 px |
+| 40 px | 48 → 38 px | 32×32 px | 144 px |
+
+Pixel scans reproduced the exact reference background bounds, x=14…67 → 19…62. Search allocations and icon positions were unchanged; settings, pins and app-launch history were preserved. No injected mouse/key input was used. Regression coverage includes repeated updates, asymmetric theme margins, compact themes, RTL, HiDPI and unattached actors; the full local suites passed 241 Node + 82 Python tests.

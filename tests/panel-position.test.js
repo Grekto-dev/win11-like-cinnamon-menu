@@ -65,9 +65,9 @@ test('second monitor offsets are respected for a left panel', () => {
 });
 
 // ---- vertical search button ----
-function searchHarness(orientation, mode, extra = {}) {
+function searchHarness(orientation, mode, extra = {}, uiScale = 1) {
     const calls = {};
-    const context = {Applet: {TextIconApplet: class {}}, global: {},
+    const context = {Applet: {TextIconApplet: class {}}, global: {ui_scale: uiScale},
         St: {Side: SIDE, TextDirection: {LTR: 0, RTL: 1}},
         Clutter: {ActorAlign: {FILL: 0, CENTER: 1, START: 2}}};
     const Class = vm.runInNewContext(source.slice(source.indexOf('class Win11MenuApplet'), source.indexOf('\nfunction main')) + '\nWin11MenuApplet', context);
@@ -110,11 +110,64 @@ test('vertical: the letter column and icon are centred across the bar', () => {
     horizontal.app._updateSearchPanelButton();
     assert.deepEqual(h, [0], 'Clutter.ActorAlign.FILL again in a horizontal bar');
 });
+test('Start highlight shrinks by 5px per side without moving the icon or Search', () => {
+    const {app} = searchHarness(SIDE.BOTTOM, 'pill');
+    let style;
+    app.startButtonBox = {set_style: s => {style = s;}, get_stage: () => ({}), get_theme_node: () => ({
+        get_padding: () => 8, get_margin: () => 0
+    })};
+    app._updateSearchPanelButton();
+    const css = Object.fromEntries((style || '').split(';').filter(s => s.trim()).map(s => s.split(':').map(v => v.trim())));
+    assert.equal(css['padding-left'], '3px');
+    assert.equal(css['padding-right'], '3px');
+    assert.equal(css['margin-left'], '5px');
+    assert.equal(css['margin-right'], '5px');
+    assert.equal(parseFloat(css['padding-left']) + parseFloat(css['margin-left']), 8);
+    assert.equal(parseFloat(css['padding-right']) + parseFloat(css['margin-right']), 8);
+    assert.doesNotMatch(style, /(?:^|;)\s*(?:width|height|padding-top|padding-bottom|margin-top|margin-bottom):/);
+});
+
+test('Start inset preserves asymmetric theme geometry, RTL, HiDPI and repeated updates', () => {
+    for (const scale of [1, 2]) {
+        for (const rtl of [false, true]) {
+            const {app} = searchHarness(SIDE.TOP, 'hidden', {}, scale);
+            let style;
+            app.actor.get_text_direction = () => rtl ? 1 : 0;
+            app.startButtonBox = {set_style: s => {style = s;}, get_stage: () => ({}), get_theme_node: () => {
+                assert.equal(style, null, 'read the original theme, not the previous inline inset');
+                return {get_padding: side => (side === SIDE.LEFT ? 8 : 6) * scale,
+                    get_margin: side => (side === SIDE.LEFT ? 2 : 4) * scale};
+            }};
+            for (let repeat = 0; repeat < 3; repeat++) {
+                app._updateSearchPanelButton();
+                assert.equal(style, 'padding-left: 3px; margin-left: 7px; padding-right: 1px; margin-right: 9px;');
+            }
+        }
+    }
+});
+test('Start inset never generates negative padding in compact themes', () => {
+    const {app} = searchHarness(SIDE.BOTTOM, 'pill');
+    let style;
+    app.startButtonBox = {set_style: s => {style = s;}, get_stage: () => ({}),
+        get_theme_node: () => ({get_padding: () => 2, get_margin: () => 1})};
+    app._updateSearchPanelButton();
+    assert.equal(style, 'padding-left: 0px; margin-left: 3px; padding-right: 0px; margin-right: 3px;');
+});
+test('Start construction waits for stage attachment before reading its theme', () => {
+    const {app} = searchHarness(SIDE.BOTTOM, 'pill');
+    let style = 'old';
+    app.startButtonBox = {set_style: s => {style = s;}, get_stage: () => null,
+        get_theme_node: () => {throw new Error('unattached actor');}};
+    assert.doesNotThrow(() => app._updateSearchPanelButton());
+    assert.equal(style, null);
+});
+
 test('vertical controls use the actual panel width, without Start padding widening the bar', () => {
     const {app} = searchHarness(SIDE.LEFT, 'pill');
     const styles = [];
     app.panel = {actor: {width: 47}};
-    app.startButtonBox = {set_style: s => styles.push(s)};
+    app.startButtonBox = {set_style: s => styles.push(s), get_stage: () => ({}),
+        get_theme_node: () => ({get_padding: () => 8, get_margin: () => 0})};
     let rootStyle;
     app.actor.set_style = s => rootStyle = s;
     app._updateSearchPanelButton();
@@ -123,7 +176,7 @@ test('vertical controls use the actual panel width, without Start padding wideni
     app._orientation = SIDE.BOTTOM;
     app._updateSearchPanelButton();
     assert.doesNotMatch(rootStyle, /width:/);
-    assert.equal(styles.at(-1), null, 'horizontal theme padding restored');
+    assert.match(styles.at(-1), /padding-left: 3px; margin-left: 5px;/, 'horizontal inset restored');
 });
 test('vertical bars keep the extra Search gaps vertical: spacing between children and padding below, nothing sideways', () => {
     const calls = [];

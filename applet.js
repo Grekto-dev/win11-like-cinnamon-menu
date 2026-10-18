@@ -706,6 +706,10 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this.startButtonBox.add(this._layoutBin, { y_align: St.Align.MIDDLE, y_fill: false });
         this._layoutBin.hide();
         this.actor.add(this.startButtonBox, { y_align: St.Align.MIDDLE, y_fill: true });
+        this.startButtonBox.connect('notify::mapped', () => {
+            if (this.startButtonBox.mapped && !this._destroying)
+                this._updateSearchPanelButton();
+        });
 
         // Build Taskbar Search Button
         this.searchPanelButton = new St.BoxLayout({
@@ -870,6 +874,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         Main.themeManager.connect("theme-set", () => {
             this._onLayoutChanged();
             this._updateIconAndLabel();
+            this._updateSearchPanelButton();
             this._updateThemeColors();
         });
         this._geometrySignals = new SignalManager.SignalManager();
@@ -1017,9 +1022,22 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         const panelWidth = vertical && this.panel && this.panel.actor ? this.panel.actor.width : 0;
         const widthStyle = panelWidth > 0 ? ` width: ${panelWidth / (global.ui_scale || 1)}px;` : '';
         this.actor.set_style(`spacing: ${spacing}px; padding-${trailingEdge}: ${spacing}px;${widthStyle}`);
-        // Horizontal Start padding would otherwise make a 47px vertical bar's applet 54px wide.
-        if (this.startButtonBox)
+        // Exchange horizontal theme padding for margin: inset the painted Start
+        // button by 5 logical px without moving its icon, Search or the next applet.
+        if (this.startButtonBox) {
             this.startButtonBox.set_style(vertical ? 'padding: 0;' : null);
+            if (!vertical && this.startButtonBox.get_stage()) {
+                const node = this.startButtonBox.get_theme_node();
+                const scale = global.ui_scale || 1;
+                const style = [[St.Side.LEFT, 'left'], [St.Side.RIGHT, 'right']].map(([side, name]) => {
+                    const padding = node.get_padding(side) / scale;
+                    const margin = node.get_margin(side) / scale;
+                    const inset = Math.min(5, Math.max(0, padding));
+                    return `padding-${name}: ${padding - inset}px; margin-${name}: ${margin + inset}px;`;
+                }).join(' ');
+                this.startButtonBox.set_style(style);
+            }
+        }
 
         if (mode === "hidden") {
             this.searchPanelButton.hide();
