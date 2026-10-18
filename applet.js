@@ -3332,11 +3332,10 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         }
         // Keep the hit-test snapshot until the pointer actually moves. A tile sliding
         // underneath a stationary pointer must not turn an insertion into a merge.
-        if (this._pinnedHover && this._pinnedHover.source === source &&
+        if (this._pinnedHover && this._pinnedHover.source === source && !this._pinnedHover.target &&
             Math.abs(x - this._pinnedHover.x) < 8 && Math.abs(y - this._pinnedHover.y) < 8)
             return DND.DragMotionResult.MOVE_DROP;
 
-        this._handlePinnedGridDragOut();
         const metrics = this._getPinnedMetrics();
         let canMerge = !isPinned || source.itemData.type === 'app';
         let target = canMerge ? this._pinnedTiles.find(t => t !== source &&
@@ -3346,9 +3345,19 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         let col = Math.max(0, Math.min(metrics.cols - 1, Math.floor(x / metrics.cellW)));
         let row = Math.max(0, Math.floor(y / metrics.cellH));
         let slot = Math.max(0, Math.min(this._pinnedTiles.length - (isPinned ? 1 : 0), row * metrics.cols + col));
+        // Keep one deadline per intent, not per pointer sample. Small movements
+        // inside the same icon/slot must not postpone the feedback indefinitely.
+        if (this._pinnedHover && this._pinnedHover.source === source &&
+            ((target && this._pinnedHover.target === target) ||
+             (!target && !this._pinnedHover.target && this._pinnedHover.slot === slot))) {
+            this._pinnedHover.x = x;
+            this._pinnedHover.y = y;
+            return DND.DragMotionResult.MOVE_DROP;
+        }
+        this._handlePinnedGridDragOut();
         const state = this._dragState;
-        this._pinnedHover = { source, x, y };
-        this._pinnedHoverTimer = Mainloop.timeout_add(target ? 420 : 75, () => {
+        this._pinnedHover = { source, x, y, target, slot };
+        this._pinnedHoverTimer = Mainloop.timeout_add(target ? 160 : 75, () => {
             this._pinnedHoverTimer = 0;
             if (this._dragState !== state) return false;
             if (target) {

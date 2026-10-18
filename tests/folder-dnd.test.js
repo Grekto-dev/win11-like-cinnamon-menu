@@ -7,6 +7,8 @@ const source = fs.readFileSync(require('node:path').join(__dirname, '../applet.j
 function harness() {
     let next = 1;
     const timers = new Map();
+    const deadlines = new Map();
+    let now = 0;
     class PinnedTile {
         constructor(applet, itemData, index) {
             if (!applet) return;
@@ -25,8 +27,8 @@ function harness() {
         destroy() {this.actor = null;}
     }
     const context = {Applet: {TextIconApplet: class {}}, PinnedTile, FolderAppTile,
-        Mainloop: {timeout_add: (delay, fn) => {let id = next++; timers.set(id, fn); return id;},
-            source_remove: id => timers.delete(id)},
+        Mainloop: {timeout_add: (delay, fn) => {let id = next++; timers.set(id, fn); deadlines.set(id, now + delay); return id;},
+            source_remove: id => {deadlines.delete(id); return timers.delete(id);}},
         Meta: {LaterType: {BEFORE_REDRAW: 0}, later_add: (_type, fn) => {timers.set(next++, fn);}},
         GLib: {SOURCE_REMOVE: false, get_monotonic_time: () => 0},
         DND: {isDragging: () => false, addDragMonitor() {}, removeDragMonitor() {},
@@ -41,7 +43,18 @@ function harness() {
         _savePinnedItems() {this.saves++;}, _refreshPinnedSection() {},
         _rebuildFolderGrid() {this.rebuilds++;}, _closeFolder() {this.closes++; this._openFolderId = null;},
         _openFolder() {this.opens++;}, closeFloatingMenus() {}});
-    function flush() {for (const [id, fn] of [...timers]) {if (!timers.has(id)) continue; timers.delete(id); if (fn()) timers.set(id, fn);}}
+    function flush() {for (const [id, fn] of [...timers]) {if (!timers.has(id)) continue; timers.delete(id); deadlines.delete(id); if (fn()) timers.set(id, fn);}}
+    function advance(ms) {
+        const end = now + ms;
+        for (;;) {
+            const due = [...deadlines].filter(([id, time]) => timers.has(id) && time <= end).sort((a, b) => a[1] - b[1])[0];
+            if (!due) break;
+            const [id, time] = due, fn = timers.get(id);
+            now = time;timers.delete(id);deadlines.delete(id);
+            if (fn()) {timers.set(id, fn);deadlines.set(id, now + 16);}
+        }
+        now = end;
+    }
     function tile(index, data = {type: 'app', id: 'app' + index}) {
         const t = Object.assign(new PinnedTile(), {index, itemData: data, currentSlot: index,
             currentX: index * 76, currentY: 0, target: false,
@@ -51,8 +64,61 @@ function harness() {
     function actor() {return {opacity: 255, x: 0, y: 0, remove_all_transitions() {},
         ease(props) {this.animationFrom = {x: this.x, y: this.y}; Object.assign(this, props); if (props.onComplete) props.onComplete();},
         set_position(x, y) {this.x = x; this.y = y;}};}
-    return {app, flush, timers, tile, actor, FolderAppTile, Class, context};
+    return {app, flush, advance, timers, tile, actor, FolderAppTile, Class, context};
 }
+
+test('moving within one merge target preserves the original hover deadline', () => {
+    const {app, tile, advance} = harness();
+    const source = tile(0), target = tile(1);
+    app._onPinnedTileDragBegin(source);
+    for (const x of [104, 124, 104, 124]) {
+        app._handlePinnedGridDragOver(source, null, x, 25, 0);
+        advance(100);
+    }
+    advance(30);
+    assert.equal(app._dragState.folderTargetIndex, target.index,
+        'normal pointer movement inside the same icon must not postpone merge forever');
+});
+
+test('moving within one insertion slot does not restart rearrangement delay', () => {
+    const {app, tile, advance} = harness();
+    const source = tile(0);tile(1);tile(2);
+    app._onPinnedTileDragBegin(source);
+    for (const x of [85, 95, 105]) {
+        app._handlePinnedGridDragOver(source, null, x, 70, 0);
+        advance(25);
+    }
+    advance(1);
+    assert.equal(app._dragState.previewSlot, 1);
+});
+
+test('merge feedback appears at 160ms instead of requiring a long stationary hold', () => {
+    const {app, tile, advance} = harness();
+    const source = tile(0), target = tile(1);
+    app._onPinnedTileDragBegin(source);
+    app._handlePinnedGridDragOver(source, null, 114, 25, 0);
+    advance(159);
+    assert.equal(app._dragState.folderTargetIndex, -1, 'a quick pass should not arm a merge');
+    advance(1);
+    assert.equal(app._dragState.folderTargetIndex, target.index);
+});
+
+test('switching merge targets restarts the deadline and leaving clears feedback immediately', () => {
+    const {app, tile, advance} = harness();
+    const source = tile(0);tile(1);const other = tile(2);
+    app._onPinnedTileDragBegin(source);
+    app._handlePinnedGridDragOver(source, null, 114, 25, 0);
+    advance(100);
+    app._handlePinnedGridDragOver(source, null, 190, 25, 0);
+    advance(60);
+    assert.equal(app._dragState.folderTargetIndex, -1, 'do not inherit another target\'s dwell');
+    advance(100);
+    assert.equal(app._dragState.folderTargetIndex, other.index);
+    app._handlePinnedGridDragOver(source, null, 210, 25, 0);
+    assert.equal(app._dragState.folderTargetIndex, other.index);
+    app._handlePinnedGridDragOver(source, null, 212, 25, 0);
+    assert.equal(app._dragState.folderTargetIndex, -1, 'even a 2px exit must clear a merge');
+});
 
 test('large six-column DND uses the same geometry for hit tests, animation and cancellation', () => {
     const {app, tile, flush} = harness();
