@@ -969,6 +969,10 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this.settings.bind("recent-apps", "recentApps");
 
         this._isReceivingSync = false;
+        this._syncRevision = 1;
+        this._needsPinnedRefresh = false;
+        this._needsRecentRefresh = false;
+        this._needsAllAppsRefresh = false;
 
         // Context menu item on panel right-click
         this._editMenuItem = new PopupMenu.PopupIconMenuItem(this.t("edit_menu"), "xsi-document-edit", St.IconType.SYMBOLIC);
@@ -1126,6 +1130,8 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             if (!Main.AppletManager || typeof Main.AppletManager.getRunningInstancesForUuid !== "function")
                 return [];
             let list = Main.AppletManager.getRunningInstancesForUuid("win11-menu@cinnamon") || [];
+            if (list.length <= 1)
+                return [];
             return list.filter(inst => inst && inst !== this && inst.instance_id !== this.instance_id && !inst._destroying);
         } catch (e) {
             return [];
@@ -1136,8 +1142,14 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         if (!this.syncInstances || this._isReceivingSync || this._destroying)
             return;
         let others = this._getOtherInstances();
+        if (others.length === 0)
+            return;
         let peer = others.find(inst => inst && inst.syncInstances && !inst._destroying);
         if (!peer)
+            return;
+
+        // Fast-path: if revision matches, we are already synchronized in memory and settings
+        if (this._syncRevision && peer._syncRevision && this._syncRevision === peer._syncRevision)
             return;
 
         this._isReceivingSync = true;
@@ -1149,7 +1161,10 @@ class Win11MenuApplet extends Applet.TextIconApplet {
                 if (peerPinnedStr !== myPinnedStr) {
                     this.pinnedItems = JSON.parse(peerPinnedStr);
                     this.settings.setValue("pinned-items", this.pinnedItems);
-                    this._refreshPinnedSection();
+                    if (this.menu && this.menu.isOpen)
+                        this._refreshPinnedSection();
+                    else
+                        this._needsPinnedRefresh = true;
                 }
             }
             // Recent apps
@@ -1159,20 +1174,29 @@ class Win11MenuApplet extends Applet.TextIconApplet {
                 if (peerRecentStr !== myRecentStr) {
                     this.recentApps = JSON.parse(peerRecentStr);
                     this.settings.setValue("recent-apps", this.recentApps);
-                    this._refreshRecentViews();
+                    if (this.menu && this.menu.isOpen)
+                        this._refreshRecentViews();
+                    else
+                        this._needsRecentRefresh = true;
                 }
             }
             // Pinned expanded
             if (typeof peer.pinnedExpanded === "boolean" && this.pinnedExpanded !== peer.pinnedExpanded) {
                 this.pinnedExpanded = peer.pinnedExpanded;
                 this.settings.setValue("pinned-expanded", this.pinnedExpanded);
-                this._refreshPinnedSection();
+                if (this.menu && this.menu.isOpen)
+                    this._refreshPinnedSection();
+                else
+                    this._needsPinnedRefresh = true;
             }
             // All apps view mode
             if (peer.allAppsViewMode && this.allAppsViewMode !== peer.allAppsViewMode) {
                 this.allAppsViewMode = peer.allAppsViewMode;
                 this.settings.setValue("all-apps-view-mode", this.allAppsViewMode);
-                this._refreshAllAppsSection();
+                if (this.menu && this.menu.isOpen)
+                    this._refreshAllAppsSection();
+                else
+                    this._needsAllAppsRefresh = true;
             }
             // Menu size mode
             if (peer.menuSize && this.menuSize !== peer.menuSize) {
@@ -1189,6 +1213,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
                 this.settings.setValue("custom-menu-height", this.customMenuHeight);
                 this._onCustomSizeSettingChanged();
             }
+            this._syncRevision = peer._syncRevision || (this._syncRevision || 1);
         } catch (e) {
             global.logWarning("[win11-menu] Pull sync failed: " + e.message);
         } finally {
@@ -1200,10 +1225,13 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         if (!this.syncInstances || this._isReceivingSync || this._destroying)
             return;
         let others = this._getOtherInstances();
+        if (others.length === 0)
+            return;
+        this._syncRevision = (this._syncRevision || 0) + 1;
         for (let other of others) {
             if (other.syncInstances && !other._destroying && typeof other._receiveInstanceSync === 'function') {
                 try {
-                    other._receiveInstanceSync(this, key, value);
+                    other._receiveInstanceSync(this, key, value, this._syncRevision);
                 } catch (e) {
                     global.logWarning("[win11-menu] Sync broadcast to instance " + other.instance_id + " failed: " + e.message);
                 }
@@ -1211,11 +1239,13 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         }
     }
 
-    _receiveInstanceSync(sourceInstance, key, value) {
+    _receiveInstanceSync(sourceInstance, key, value, revision) {
         if (!this.syncInstances || this._destroying || this._isReceivingSync)
             return;
         this._isReceivingSync = true;
         try {
+            if (revision)
+                this._syncRevision = revision;
             this._applySyncedProperty(key, value);
         } catch (e) {
             global.logWarning("[win11-menu] Receive sync failed for " + key + ": " + e.message);
@@ -1229,32 +1259,50 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         case 'pinnedItems':
             this.pinnedItems = JSON.parse(JSON.stringify(value || []));
             this.settings.setValue('pinned-items', this.pinnedItems);
-            this._refreshPinnedSection();
-            if (this._openFolderId) {
-                let folder = (this.pinnedItems || []).find(item => item.id === this._openFolderId);
-                if (folder)
-                    this._rebuildFolderGrid(folder);
-                else
-                    this._closeFolder();
+            if (this.menu && this.menu.isOpen) {
+                this._refreshPinnedSection();
+                if (this._openFolderId) {
+                    let folder = (this.pinnedItems || []).find(item => item.id === this._openFolderId);
+                    if (folder)
+                        this._rebuildFolderGrid(folder);
+                    else
+                        this._closeFolder();
+                }
+            } else {
+                this._needsPinnedRefresh = true;
+                if (this._openFolderId) {
+                    let folder = (this.pinnedItems || []).find(item => item.id === this._openFolderId);
+                    if (!folder)
+                        this._openFolderId = null;
+                }
             }
             break;
 
         case 'recentApps':
             this.recentApps = JSON.parse(JSON.stringify(value || []));
             this.settings.setValue('recent-apps', this.recentApps);
-            this._refreshRecentViews();
+            if (this.menu && this.menu.isOpen)
+                this._refreshRecentViews();
+            else
+                this._needsRecentRefresh = true;
             break;
 
         case 'pinnedExpanded':
             this.pinnedExpanded = !!value;
             this.settings.setValue('pinned-expanded', this.pinnedExpanded);
-            this._refreshPinnedSection();
+            if (this.menu && this.menu.isOpen)
+                this._refreshPinnedSection();
+            else
+                this._needsPinnedRefresh = true;
             break;
 
         case 'allAppsViewMode':
             this.allAppsViewMode = value;
             this.settings.setValue('all-apps-view-mode', value);
-            this._refreshAllAppsSection();
+            if (this.menu && this.menu.isOpen)
+                this._refreshAllAppsSection();
+            else
+                this._needsAllAppsRefresh = true;
             break;
 
         case 'menuSize':
@@ -6271,6 +6319,18 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         if (open) {
             if (this.syncInstances)
                 this._pullSyncFromExistingInstances();
+            if (this._needsPinnedRefresh) {
+                this._needsPinnedRefresh = false;
+                this._refreshPinnedSection();
+            }
+            if (this._needsRecentRefresh) {
+                this._needsRecentRefresh = false;
+                this._refreshRecentViews();
+            }
+            if (this._needsAllAppsRefresh) {
+                this._needsAllAppsRefresh = false;
+                this._refreshAllAppsSection();
+            }
             this._ensureStylesheetLoaded();
             this._syncMenuGeometry();
             this._updateThemeColors();
