@@ -25,7 +25,7 @@
         "general-behavior": {
             "type": "section",
             "title": "Behavior / Comportamento",
-            "keys": ["overlay-key", "center-menu-on-screen", "activate-on-hover", "hover-delay", "enable-animation", "enable-autoscroll"]
+            "keys": ["sync-instances", "overlay-key", "center-menu-on-screen", "activate-on-hover", "hover-delay", "enable-animation", "enable-autoscroll"]
         },
         "appearance-panel": {
             "type": "section",
@@ -298,6 +298,12 @@
         "type": "switch",
         "default": false,
         "description": "Network / Rede"
+    },
+    "sync-instances": {
+        "type": "switch",
+        "default": true,
+        "description": "Sync menus across multiple monitors / Sincronizar menus entre múltiplos monitores",
+        "tooltip": "Keeps pinned apps, recents, order, and settings identical across all instances of this applet / Mantém aplicativos fixados, recentes, ordem e configurações idênticos em todas as instâncias deste applet"
     },
     "enable-autoscroll": {
         "type": "switch",

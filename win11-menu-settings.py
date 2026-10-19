@@ -121,6 +121,8 @@ I18N = {
         "hover_delay": "Hover delay (ms)",
         "enable_animation": "Use menu animations",
         "enable_autoscroll": "Autoscroll in the application list",
+        "sync_instances": "Sync menus across multiple monitors and taskbars",
+        "sync_instances_sub": "Keep pinned apps, recents, order, and settings identical across all instances",
         "choose_icon": "Choose an image",
         "browse": "Browse…",
         "cancel": "Cancel",
@@ -201,6 +203,8 @@ I18N = {
         "hover_delay": "Atraso ao passar o mouse (ms)",
         "enable_animation": "Usar animações no menu",
         "enable_autoscroll": "Rolagem automática na lista de aplicativos",
+        "sync_instances": "Sincronizar menus entre múltiplos monitores",
+        "sync_instances_sub": "Manter aplicativos fixados, recentes, ordem e configurações idênticos em todas as instâncias",
         "choose_icon": "Escolher uma imagem",
         "browse": "Procurar…",
         "cancel": "Cancelar",
@@ -296,7 +300,7 @@ class ConfigStore:
             return entry["value"]
         return default
 
-    def write(self, changes):
+    def write(self, changes, sync_others=True):
         """Set the "value" of existing keys. Returns the keys actually changed."""
         data = self._load()
         if data is None:
@@ -312,6 +316,18 @@ class ConfigStore:
         if written:
             self._atomic_dump(data)
             self._touch("refresh-" + self.instance_id)
+
+            should_sync = sync_others and (self.get("sync-instances", True) or "sync-instances" in changes)
+            if should_sync:
+                try:
+                    for filename in os.listdir(self.spices_dir):
+                        if filename.endswith(".json") and not filename.startswith("."):
+                            other_id = filename[:-5]
+                            if other_id != self.instance_id:
+                                other_store = ConfigStore(other_id, self.spices_dir, self.cache_dir)
+                                other_store.write(changes, sync_others=False)
+                except Exception as exc:
+                    warn("cannot sync instances: %s" % exc)
         return written
 
     def _atomic_dump(self, data):
@@ -337,6 +353,15 @@ class ConfigStore:
 
     def touch_reset_pinned(self):
         self._touch("reset-pinned-" + self.instance_id)
+        if self.get("sync-instances", True):
+            try:
+                for filename in os.listdir(self.spices_dir):
+                    if filename.endswith(".json") and not filename.startswith("."):
+                        other_id = filename[:-5]
+                        if other_id != self.instance_id:
+                            self._touch("reset-pinned-" + other_id)
+            except Exception as exc:
+                warn("cannot touch reset-pinned for other instances: %s" % exc)
 
 
 # ---------------------------------------------------------------------------
@@ -822,6 +847,8 @@ class SettingsWindow(Gtk.Window):
         self.overlay_button.connect("focus-out-event", lambda *_: self.cancel_capture() and False)
         self._relabel.append(self._refresh_overlay_label)
         self._refresh_overlay_label()
+        self.row(group, "sync_instances", self.switch("sync-instances", True),
+                 sub_key="sync_instances_sub")
         self.row(group, "overlay_key", self.overlay_button)
         self.row(group, "center_menu", self.switch("center-menu-on-screen", True))
         self.row(group, "activate_on_hover", self.switch("activate-on-hover", False))

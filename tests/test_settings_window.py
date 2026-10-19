@@ -69,6 +69,7 @@ FIXTURE_KEYS = [
     ("hover-delay", "spinbutton", 0, 0),
     ("enable-animation", "switch", True, True),
     ("enable-autoscroll", "switch", True, True),
+    ("sync-instances", "switch", True, True),
     ("pinned-items", "generic", [], [{"type": "app", "id": "org.gnome.Calculator.desktop"}]),
 ]
 INSTANCE = "42"
@@ -492,7 +493,7 @@ class SingleInstanceTest(TempDirsMixin, unittest.TestCase):
             self.assertIsNot(reopened, first, "a destroyed Gtk window reappears as a blank page")
             self.assertIsNotNone(reopened.get_child())
             self.assertEqual(reopened.stack.get_visible_child_name(), "layout")
-            self.assertEqual(len(reopened.controls), 31)
+            self.assertEqual(len(reopened.controls), 32)
             self.assertEqual(self.read_config()["menu-icon"]["value"], "cs-xlet-error")
 
     @unittest.skipUnless(Gtk.init_check()[0], "needs a display")
@@ -545,7 +546,7 @@ app = m.SettingsApplication(sys.argv[2], "layout", sys.argv[3], sys.argv[4])
 auxiliary = []; timed_out = []
 def close_main():
     assert app.window.get_child() is not None
-    assert len(app.window.controls) == 31
+    assert len(app.window.controls) == 32
     aux = m.Gtk.Window(application=app); auxiliary.append(aux)
     aux.hide()  # Reproduce an auxiliary window keeping the Gtk.Application alive.
     picker = app.window.controls["menu-icon"]
