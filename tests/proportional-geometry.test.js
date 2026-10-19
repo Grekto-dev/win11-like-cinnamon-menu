@@ -7,13 +7,13 @@ const vm = require('node:vm');
 const path = require('node:path');
 const source = fs.readFileSync(path.join(__dirname, '../applet.js'), 'utf8');
 
-function harness({monitor = {width: 1920, height: 1080}, uiScale = 1, panel = 48, area = null, menuSize = 'large'} = {}) {
+function harness({monitor = {width: 1920, height: 1080}, uiScale = 1, panel = 48, area = null, menuSize = 'large', customMenuWidth = 796, customMenuHeight = 750} = {}) {
     const context = {Applet: {TextIconApplet: class {}}, global: {ui_scale: uiScale},
         Main: {layoutManager: {findMonitorForActor: () => ({index: 0, x: 0, y: 0, ...monitor}), primaryMonitor: {index: 0, ...monitor}}},
         St: {Side: {LEFT: 0, RIGHT: 1, TOP: 2, BOTTOM: 3}}};
     const Class = vm.runInNewContext(source.slice(source.indexOf('class Win11MenuApplet'), source.indexOf('\nfunction main')) + '\nWin11MenuApplet', context);
     const app = Object.create(Class.prototype);
-    Object.assign(app, {_panelHeight: panel, actor: {}, _orientation: 3, menuSize,
+    Object.assign(app, {_panelHeight: panel, actor: {}, _orientation: 3, menuSize, customMenuWidth, customMenuHeight,
         _getMenuAvailableArea: () => area || {width: monitor.width, height: monitor.height - panel}});
     return app;
 }
@@ -26,12 +26,21 @@ test('reference monitor 1920x1080 gives the measured 834x866 menu', () => {
 test('panel thickness no longer changes the menu size', () => {
     for (const panel of [30, 48, 64]) assert.deepEqual([g({panel}).width, g({panel}).height], [834, 866]);
 });
-test('every 16:9 resolution keeps the same fraction of the screen', () => {
-    for (const [w, h] of [[1280, 720], [1366, 768], [1600, 900], [1920, 1080], [2560, 1440], [3840, 2160]]) {
+test('1920x1080 and above keep the FHD screen fraction while sub-FHD resolutions follow the compact reference curve', () => {
+    for (const [w, h] of [[1920, 1080], [2560, 1440], [3840, 2160]]) {
         const geo = g({monitor: {width: w, height: h}, area: {width: w, height: h - h * 0.0444}});
         assert.ok(Math.abs(geo.width / w - 834 / 1920) < 0.003, `${w}x${h} width ${geo.width / w}`);
         assert.ok(Math.abs(geo.height / h - 866 / 1080) < 0.003, `${w}x${h} height ${geo.height / h}`);
     }
+    // On 1366x768, Small matches the 885px compact Windows 11 reference capture height ratio (726 / 885 = 82.03%)
+    const small768 = g({menuSize: 'small', monitor: {width: 1366, height: 768}, panel: 40});
+    assert.deepEqual([small768.width, small768.height], [557, 630]);
+    assert.ok(Math.abs(small768.height / 768 - 726 / 885) < 0.002);
+    const medium768 = g({menuSize: 'medium', monitor: {width: 1366, height: 768}, panel: 40});
+    assert.deepEqual([medium768.width, medium768.height], [640, 690]);
+    const large768 = g({menuSize: 'large', monitor: {width: 1366, height: 768}, panel: 40});
+    assert.ok(small768.width < medium768.width && medium768.width < large768.width);
+    assert.ok(small768.height < medium768.height && medium768.height < large768.height);
 });
 test('HiDPI: the same fraction whether or not the shell scales the UI', () => {
     const a = g({monitor: {width: 3840, height: 2160}, uiScale: 2, panel: 96, area: {width: 3840, height: 2064}});
@@ -62,23 +71,100 @@ test('the pinned grid spans the content width of the new menu (834 - 72 px paddi
     assert.equal(p.cols * p.cellW <= 762 && p.cols * p.cellW > 762 - p.cols, true, `${p.cols}x${p.cellW}`);
 });
 
-test('each menu profile preserves uniform screen fractions and HiDPI texture sizes', () => {
+test('each menu profile preserves crisp icon sizes, Search Home responsive columns, and HiDPI texture sizes', () => {
     const actor = () => ({set_size() {}, set_clip_to_allocation() {}});
     for (const [menuSize, width, height, cols] of [['small', 642, 726, 6], ['medium', 738, 796, 7], ['large', 834, 866, 8]]) {
-        for (const [w, h] of [[1280, 720], [1920, 1080], [2560, 1440], [3840, 2160], [3440, 1440]]) {
+        for (const [w, h] of [[1280, 720], [1366, 768], [1600, 900], [1920, 1080], [2560, 1440], [3840, 2160], [3440, 1440]]) {
             for (const uiScale of [1, 2]) {
-                const app = harness({menuSize, monitor: {width: w, height: h}, uiScale, panel: 48 * uiScale});
-                Object.assign(app, {mainContainer: actor(), rootStack: actor(), menu: {actor: actor(), isOpen: false}});
+                const app = harness({menuSize, monitor: {width: w, height: h}, uiScale, panel: 40 * uiScale});
+                Object.assign(app, {mainContainer: actor(), rootStack: actor(), menu: {actor: actor(), isOpen: false},
+                    searchLeftCol: {}, searchPreviewPane: {}});
                 app._syncMenuGeometry();
                 const geo = app._menuGeometry;
                 const p = app._getPinnedMetrics();
-                const scale = Math.min(w / 1920, h / 1080);
-                assert.deepEqual([geo.width, geo.height, p.cols], [Math.floor(width * scale), Math.floor(height * scale), cols]);
-                assert.equal(p.iconSize, 32 * scale / uiScale);
-                assert.equal(p.iconBox, 42 * scale);
-                assert.ok(p.cols * p.cellW <= app._menuContentSize.width - 52 * uiScale);
+                const s = app._getSearchMetrics();
+                assert.equal(p.cols, cols);
+                assert.equal(p.iconBox, Math.max(1, Math.round(42 * geo.scale)));
+                if (w >= 1920 && h >= 1080) {
+                    const scale = Math.min(w / 1920, h / 1080);
+                    assert.deepEqual([geo.width, geo.height], [Math.floor(width * scale), Math.floor(height * scale)]);
+                    assert.equal(p.iconSize, Math.round(32 * scale / uiScale));
+                } else if (uiScale === 1) {
+                    assert.equal(p.iconSize, 32, `${menuSize}@${w}x${h} keeps 32px icons`);
+                }
+                assert.ok(p.cols * p.cellW <= app._menuContentSize.width - 2 * p.padX * uiScale);
+                assert.ok(s.leftW + 3 * s.topAppCardW + 16 * uiScale + 74 * uiScale <= app._menuContentSize.width);
             }
         }
+    }
+});
+
+test('custom menu size mode coincides with presets and steps columns/icons proportionally', () => {
+    const actor = () => ({set_size() {}, set_clip_to_allocation() {}});
+    for (const [w, h] of [[1366, 768], [1920, 1080], [2560, 1440], [3840, 2160]]) {
+        const probe = harness({monitor: {width: w, height: h}, panel: 40});
+        const bounds = probe._getMenuSizeBounds();
+        const smallPreset = probe._getPresetGeometry('small');
+        const mediumPreset = probe._getPresetGeometry('medium');
+        const largePreset = probe._getPresetGeometry('large');
+
+        // Minimum size equals Small preset
+        assert.equal(bounds.minWidth, smallPreset.width);
+        assert.equal(bounds.minHeight, smallPreset.height);
+        assert.ok(bounds.maxWidth > largePreset.width);
+        assert.ok(bounds.maxHeight >= largePreset.height);
+
+        // When custom width/height coincides with Small, Medium, or Large, cols and iconSize match preset
+        for (const [presetName, preset, expectedCols] of [
+            ['small', smallPreset, 6],
+            ['medium', mediumPreset, 7],
+            ['large', largePreset, 8],
+        ]) {
+            const customApp = harness({
+                menuSize: 'custom',
+                customMenuWidth: preset.width,
+                customMenuHeight: preset.height,
+                monitor: {width: w, height: h},
+                panel: 40,
+            });
+            Object.assign(customApp, {mainContainer: actor(), rootStack: actor(), menu: {actor: actor(), isOpen: false},
+                searchLeftCol: {}, searchPreviewPane: {}});
+            customApp._syncMenuGeometry();
+            const p = customApp._getPinnedMetrics();
+            assert.equal(p.cols, expectedCols, `${presetName}@${w}x${h} cols`);
+            assert.equal(p.iconSize, Math.round(32 * Math.max(1, preset.logicalScale)), `${presetName}@${w}x${h} iconSize`);
+        }
+
+        // Just above Small width, a 7th column is added and iconSize steps down then grows toward Medium
+        const justAboveSmall = harness({
+            menuSize: 'custom',
+            customMenuWidth: smallPreset.width + 4,
+            customMenuHeight: smallPreset.height,
+            monitor: {width: w, height: h},
+            panel: 40,
+        });
+        Object.assign(justAboveSmall, {mainContainer: actor(), rootStack: actor(), menu: {actor: actor(), isOpen: false},
+            searchLeftCol: {}, searchPreviewPane: {}});
+        justAboveSmall._syncMenuGeometry();
+        const pStep = justAboveSmall._getPinnedMetrics();
+        assert.equal(pStep.cols, 7);
+        const maxIcon = Math.round(32 * Math.max(1, smallPreset.logicalScale));
+        assert.ok(pStep.iconSize < maxIcon && pStep.iconSize >= Math.round(32 * (6 / 7) * Math.max(1, smallPreset.logicalScale)) - 1);
+
+        // Beyond Large width, a 9th column is added and icons never exceed preset max
+        const aboveLarge = harness({
+            menuSize: 'custom',
+            customMenuWidth: largePreset.width + 20,
+            customMenuHeight: largePreset.height,
+            monitor: {width: w, height: h},
+            panel: 40,
+        });
+        Object.assign(aboveLarge, {mainContainer: actor(), rootStack: actor(), menu: {actor: actor(), isOpen: false},
+            searchLeftCol: {}, searchPreviewPane: {}});
+        aboveLarge._syncMenuGeometry();
+        const pAboveLarge = aboveLarge._getPinnedMetrics();
+        assert.ok(pAboveLarge.cols >= 9);
+        assert.ok(pAboveLarge.iconSize <= Math.round(32 * Math.max(1, largePreset.logicalScale)));
     }
 });
 

@@ -81,7 +81,7 @@ git clone https://github.com/Grekto-dev/win11-like-cinnamon-menu.git ~/.local/sh
 ## ⚙️ Enabling & Configuring the Applet
 
 1. Right-click on your Cinnamon panel and click **"Applets"** (or open *System Settings -> Applets*).
-2. Under the **"Manage"** tab, locate **"Win11-Like CInnamon Menu"**.
+2. Under the **"Manage"** tab, locate **"Win11-Like Cinnamon Menu"**.
 3. Select it and click the **"+"** button to add it to your panel.
 4. Click the gear icon next to the applet or right-click the panel icon and choose **"Configure..."** to customize:
    - Language (English or PT-BR)

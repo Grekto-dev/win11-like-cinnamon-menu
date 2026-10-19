@@ -83,6 +83,10 @@ I18N = {
         "menu_small": "Small",
         "menu_medium": "Medium",
         "menu_large": "Large",
+        "menu_custom_size": "Custom",
+        "custom_menu_width": "Custom menu width (px)",
+        "custom_menu_height": "Custom menu height (px)",
+        "custom_menu_size_tip": "When Custom is selected, you can also drag the top-right corner of the menu to resize it live",
         "show_avatar": "Show user avatar and name",
         "show_description": "Show application descriptions in search",
         "section_folders": "Folders",
@@ -159,6 +163,10 @@ I18N = {
         "menu_small": "Pequeno",
         "menu_medium": "Médio",
         "menu_large": "Grande",
+        "menu_custom_size": "Personalizado",
+        "custom_menu_width": "Largura personalizada do menu (px)",
+        "custom_menu_height": "Altura personalizada do menu (px)",
+        "custom_menu_size_tip": "Quando Personalizado está selecionado, você também pode clicar e arrastar no canto superior direito do menu para redimensioná-lo em tempo real",
         "show_avatar": "Mostrar avatar e nome do usuário",
         "show_description": "Mostrar descrições dos aplicativos na pesquisa",
         "section_folders": "Pastas",
@@ -387,7 +395,12 @@ def panel_position(instance_id):
         return None
 
 
-MENU_SIZES = [("small", "menu_small"), ("medium", "menu_medium"), ("large", "menu_large")]
+MENU_SIZES = [
+    ("small", "menu_small"),
+    ("medium", "menu_medium"),
+    ("large", "menu_large"),
+    ("custom", "menu_custom_size"),
+]
 LANGUAGES = [("en", "English"), ("ptbr", "Português (Brasil)")]  # never translated
 # Order matters: this is the top -> bottom order of the "Folders" sub-page. No power row.
 FOLDER_ROWS = [
@@ -421,6 +434,9 @@ class SettingsWindow(Gtk.Window):
         self._loading = True      # True while widgets are being filled from the config
         self._pending = {}        # key -> value waiting for the debounce timer
         self._timer = 0
+        self._live_size_monitor = None
+        self._live_size_monitor_id = 0
+        self._last_live_size_ts = 0
         self.nav_rows = {}
         self.back_buttons = {}
         self.add_class_provider()
@@ -457,11 +473,13 @@ class SettingsWindow(Gtk.Window):
         outer.pack_start(bar, False, False, 0)
 
         self.connect("delete-event", self._on_delete)
-        self.connect("destroy", lambda *_: self.flush())  # never leave a timer behind
+        self.connect("destroy", self._on_destroy)  # never leave a timer or monitor behind
         self.connect("key-press-event", self._on_key_press)
         self.connect("key-release-event", self._on_key_release)
         self.editor_button.connect("clicked", lambda *_: spawn(["cinnamon-menu-editor"]))
         self.reset_button.connect("clicked", self._on_reset_clicked)
+        self._sync_live_size_from_cache(update_values=False)
+        self._start_live_size_monitor()
         self._update_sensitivity()
         self._loading = False
         outer.show_all()  # Gtk.Stack can only switch to visible children
@@ -722,7 +740,12 @@ class SettingsWindow(Gtk.Window):
                  tip_key="search_spacing_tip")
 
         menu = self.group(box, "group_menu")
-        self.row(menu, "menu_size", self.combo("menu-size", MENU_SIZES, "large"))
+        self.row(menu, "menu_size", self.combo("menu-size", MENU_SIZES, "large"),
+                 tip_key="custom_menu_size_tip")
+        self.row(menu, "custom_menu_width", self.spin("custom-menu-width", 420, 3200, 796),
+                 tip_key="custom_menu_size_tip")
+        self.row(menu, "custom_menu_height", self.spin("custom-menu-height", 480, 2400, 750),
+                 tip_key="custom_menu_size_tip")
         self.row(menu, "show_avatar", self.switch("show-avatar", True))
         self.row(menu, "show_description", self.switch("show-description", True))
 
@@ -868,15 +891,104 @@ class SettingsWindow(Gtk.Window):
         c = self.controls
         display_on = c["search-display"].get_active_id() in ("pill", "box")
         search_custom = display_on and c["search-button-size-mode"].get_active_id() == "custom"
+        menu_custom_size = c["menu-size"].get_active_id() == "custom"
         rules = {
             "menu-icon-size": c["menu-icon-size-mode"].get_active_id() == "custom",
             "search-button-size-mode": display_on,
             "search-pill-height": search_custom,
+            "custom-menu-width": menu_custom_size,
+            "custom-menu-height": menu_custom_size,
             "hover-delay": c["activate-on-hover"].get_active(),
         }
         for key, enabled in rules.items():
             row = c[key].get_ancestor(Gtk.ListBoxRow)
             (row or c[key]).set_sensitive(enabled)
+
+    # -- live drag-resize sync from applet ----------------------------------------
+    def _live_size_path(self):
+        return os.path.join(self.store.cache_dir, "live-size-" + self.store.instance_id + ".json")
+
+    def _start_live_size_monitor(self):
+        try:
+            os.makedirs(self.store.cache_dir, exist_ok=True)
+            gfile = Gio.File.new_for_path(self.store.cache_dir)
+            self._live_size_monitor = gfile.monitor_directory(Gio.FileMonitorFlags.NONE, None)
+            self._live_size_monitor_id = self._live_size_monitor.connect(
+                "changed", self._on_cache_dir_changed
+            )
+        except Exception:
+            self._live_size_monitor = None
+            self._live_size_monitor_id = 0
+
+    def _stop_live_size_monitor(self):
+        if self._live_size_monitor is not None:
+            try:
+                if self._live_size_monitor_id:
+                    self._live_size_monitor.disconnect(self._live_size_monitor_id)
+                self._live_size_monitor.cancel()
+            except Exception:
+                pass
+            self._live_size_monitor = None
+            self._live_size_monitor_id = 0
+
+    def _on_cache_dir_changed(self, _monitor, file_a, file_b, _event_type):
+        target = "live-size-" + self.store.instance_id + ".json"
+        names = (
+            file_a.get_basename() if file_a else "",
+            file_b.get_basename() if file_b else "",
+        )
+        if target in names:
+            self._sync_live_size_from_cache(update_values=True)
+
+    def _sync_live_size_from_cache(self, update_values=True):
+        path = self._live_size_path()
+        if not os.path.exists(path):
+            return False
+        try:
+            with open(path, encoding="utf-8") as handle:
+                payload = json.load(handle)
+        except (OSError, ValueError):
+            return False
+        if not isinstance(payload, dict):
+            return False
+
+        w_spin = self.controls.get("custom-menu-width")
+        h_spin = self.controls.get("custom-menu-height")
+        if w_spin is None or h_spin is None:
+            return False
+
+        prev_loading = self._loading
+        self._loading = True
+        try:
+            min_w = payload.get("minWidth")
+            max_w = payload.get("maxWidth")
+            min_h = payload.get("minHeight")
+            max_h = payload.get("maxHeight")
+            if isinstance(min_w, (int, float)) and isinstance(max_w, (int, float)) and max_w >= min_w:
+                cur_w = int(w_spin.get_value())
+                w_spin.set_range(int(min_w), int(max_w))
+                w_spin.set_value(max(int(min_w), min(int(max_w), cur_w)))
+            if isinstance(min_h, (int, float)) and isinstance(max_h, (int, float)) and max_h >= min_h:
+                cur_h = int(h_spin.get_value())
+                h_spin.set_range(int(min_h), int(max_h))
+                h_spin.set_value(max(int(min_h), min(int(max_h), cur_h)))
+
+            if update_values:
+                width = payload.get("width")
+                height = payload.get("height")
+                if isinstance(width, (int, float)):
+                    w_spin.set_value(int(round(width)))
+                    self._pending.pop("custom-menu-width", None)
+                if isinstance(height, (int, float)):
+                    h_spin.set_value(int(round(height)))
+                    self._pending.pop("custom-menu-height", None)
+        finally:
+            self._loading = prev_loading
+        return True
+
+    def _on_destroy(self, *_args):
+        self._stop_live_size_monitor()
+        self.flush()
 
     # -- persistence -------------------------------------------------------------
     def _watch(self, key, widget):

@@ -35,7 +35,7 @@
         "appearance-menu": {
             "type": "section",
             "title": "Menu Options / Opções do Menu",
-            "keys": ["menu-size", "show-description", "reset-pinned-button"]
+            "keys": ["menu-size", "custom-menu-width", "custom-menu-height", "show-description", "reset-pinned-button"]
         },
         "content-sections": {
             "type": "section",
@@ -216,12 +216,33 @@
         "type": "combobox",
         "default": "large",
         "description": "Menu size / Tamanho do menu",
-        "tooltip": "Applies immediately. Menu bounds adapt proportionally to the monitor and available area; icons keep the same reference size. / Aplicação imediata. As dimensões do menu se ajustam proporcionalmente ao monitor e à área disponível; os ícones mantêm o mesmo tamanho de referência.",
+        "tooltip": "Applies immediately. Menu bounds adapt proportionally to the monitor and available area; in Custom mode you can also drag the top-right corner of the menu. / Aplicação imediata. As dimensões do menu se ajustam proporcionalmente ao monitor e à área disponível; no modo Personalizado você também pode arrastar o canto superior direito do menu.",
         "options": {
             "Small / Pequeno": "small",
             "Medium / Médio": "medium",
-            "Large / Grande": "large"
+            "Large / Grande": "large",
+            "Custom / Personalizado": "custom"
         }
+    },
+    "custom-menu-width": {
+        "type": "spinbutton",
+        "default": 738,
+        "min": 400,
+        "max": 3840,
+        "step": 1,
+        "units": "px",
+        "description": "Menu width / Largura do menu",
+        "dependency": "menu-size=custom"
+    },
+    "custom-menu-height": {
+        "type": "spinbutton",
+        "default": 796,
+        "min": 400,
+        "max": 2160,
+        "step": 1,
+        "units": "px",
+        "description": "Menu height / Altura do menu",
+        "dependency": "menu-size=custom"
     },
     "show-avatar": {
         "type": "switch",

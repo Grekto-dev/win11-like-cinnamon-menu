@@ -1,5 +1,5 @@
 /* =========================================================================
- * Win11-Like CInnamon Menu
+ * Win11-Like Cinnamon Menu
  * Follows Windows 11 layout & geometry while inheriting Cinnamon theme colors
  * ========================================================================= */
 
@@ -149,7 +149,9 @@
     spacing: 10px;
 }
 
-#appmenu-search-entry.win11-search-entry {
+#appmenu-search-entry.win11-search-entry,
+#appmenu-search-entry.win11-search-entry:focus,
+#appmenu-search-entry.win11-search-entry:hover {
     border-radius: 999px;
     padding: 8px 16px;
     min-height: 22px;
@@ -168,12 +170,18 @@
 }
 
 .win11-start-scroll-content {
+    padding: 6px 0 18px 0;
+    spacing: 18px;
+}
+
+.win11-all-recent-subview {
     padding: 6px 26px 18px 26px;
     spacing: 18px;
 }
 
 /* Section Headers (Pinned / Fixado, Recent / Recente, All / Todos) */
 .win11-section-box {
+    padding: 0 26px;
     spacing: 8px;
 }
 
@@ -728,3 +736,31 @@
 .win11-search-panel-pill-vertical .win11-search-panel-pill-label {
     padding: 0;
 }
+
+/* Custom Menu Size: Top-Right Interactive Resize Handle */
+.win11-resize-corner-handle {
+    padding: 4px;
+    border-radius: 0 8px 0 8px;
+    background-color: transparent;
+    transition-duration: 120ms;
+}
+
+.win11-resize-corner-handle:hover,
+.win11-resize-corner-handle-active {
+    background-color: rgba(150, 150, 165, 0.22);
+}
+
+.win11-resize-corner-grip {
+    width: 12px;
+    height: 12px;
+    border-top: 2px solid rgba(255, 255, 255, 0.38);
+    border-right: 2px solid rgba(255, 255, 255, 0.38);
+    border-radius: 0 4px 0 0;
+}
+
+.win11-resize-corner-handle:hover .win11-resize-corner-grip,
+.win11-resize-corner-handle-active .win11-resize-corner-grip {
+    border-top-color: rgba(255, 255, 255, 0.85);
+    border-right-color: rgba(255, 255, 255, 0.85);
+}
+

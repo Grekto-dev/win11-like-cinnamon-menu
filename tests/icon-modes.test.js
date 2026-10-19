@@ -75,7 +75,7 @@ test('native theme chrome and section padding cannot push hit targets outside th
     app.menu.actor.get_theme_node = () => ({get_content_box: box => ({get_size: () => [box.x2 - 180, box.y2 - 40]})});
     for (const size of ['small', 'medium', 'large']) {
         const {p, f} = metrics(app, size);
-        assert.ok(p.cols * p.cellW <= app._menuContentSize.width - 52, size);
+        assert.ok(p.cols * p.cellW <= app._menuContentSize.width - 2 * p.padX, size);
         assert.ok(f.cols * f.cellW <= app._menuContentSize.width - 104, size);
         assert.ok(p.mergeInset * 2 < p.cellW && p.iconBox < p.cellW, size);
     }
@@ -146,15 +146,17 @@ test('a live menu-size change waits for DND source release, then applies once wi
     assert.deepEqual(renders, ['pins', 'folder']);
 });
 
-test('schema and live binding expose Menu size, retaining the old key only for migration', () => {
+test('schema and live binding expose Menu size (including Custom), retaining the old key only for migration', () => {
     assert.equal(schema['icon-size-mode'].type, 'generic');
     assert.equal(schema['icon-size-mode'].default, 'standard');
     assert.equal(schema['menu-size'].default, 'large');
     assert.equal(schema['menu-size'].description, 'Menu size / Tamanho do menu');
-    assert.deepEqual(Object.values(schema['menu-size'].options), ['small', 'medium', 'large']);
+    assert.deepEqual(Object.values(schema['menu-size'].options), ['small', 'medium', 'large', 'custom']);
     assert.ok(schema.layout1['appearance-menu'].keys.includes('menu-size'));
+    assert.ok(schema.layout1['appearance-menu'].keys.includes('custom-menu-width'));
+    assert.ok(schema.layout1['appearance-menu'].keys.includes('custom-menu-height'));
     assert.ok(!schema.layout1['appearance-menu'].keys.includes('icon-size-mode'));
-    assert.match(source, /bind\("menu-size", "menuSize", \(\) => this\._onLayoutChanged\(\)\)/);
+    assert.match(source, /bind\("menu-size", "menuSize", \(\) => this\._onMenuSizeModeChanged\(\)\)/);
     assert.match(source, /bind\("icon-size-mode", "iconSizeMode", null\)/);
 });
 test('version 1 and 2 migration reverses old icon labels while preserving effective column counts and all user data', () => {

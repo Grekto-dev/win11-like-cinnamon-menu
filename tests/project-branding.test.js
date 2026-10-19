@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const root = path.join(__dirname, '..');
-const projectName = 'Win11-Like CInnamon Menu';
+const projectName = 'Win11-Like Cinnamon Menu';
 const repository = 'https://github.com/Grekto-dev/win11-like-cinnamon-menu';
 
 test('the public project name changes without changing the installed UUID', () => {

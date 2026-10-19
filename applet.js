@@ -25,6 +25,7 @@ const Settings = imports.ui.settings;
 const Pango = imports.gi.Pango;
 const SearchProviderManager = imports.ui.searchProviderManager;
 const SignalManager = imports.misc.signalManager;
+const Tooltips = (imports.ui && imports.ui.tooltips) ? imports.ui.tooltips : null;
 
 const AppUtils = (typeof require !== 'undefined') ? require('./appUtils') : imports.appUtils;
 const RecentFiles = (typeof require !== 'undefined') ? require('./recentFiles') : imports.recentFiles;
@@ -277,7 +278,8 @@ class PinnedTile {
         });
         this.actor._delegate = this;
         this.actor.set_clip_to_allocation(true);
-        this.actor.set_style(`padding: ${5 * metrics.logicalScale}px ${3 * metrics.logicalScale}px ${3 * metrics.logicalScale}px; spacing: ${5 * metrics.logicalScale}px;`);
+        const padScale = Math.max(0.85, metrics.logicalScale);
+        this.actor.set_style(`padding: ${Math.round(5 * padScale)}px ${Math.round(3 * padScale)}px ${Math.round(3 * padScale)}px; spacing: ${Math.round(4 * padScale)}px;`);
         this.actor.set_position(this.currentX, this.currentY);
 
         this.iconContainer = new St.Bin({
@@ -305,8 +307,11 @@ class PinnedTile {
             x_expand: true,
             x_align: Clutter.ActorAlign.CENTER
         });
-        this.label.height = 26 * metrics.scale;
-        this.label.set_style(`font-size: ${11.33 * metrics.logicalScale}px; min-width: 0;`);
+        this.label.height = Math.round(26 * metrics.scale);
+        const fontPx = metrics.logicalScale >= 1
+            ? Math.round(11.33 * metrics.logicalScale * 100) / 100
+            : Math.max(10.5, Math.round(11.33 * metrics.logicalScale * 10) / 10);
+        this.label.set_style(`font-size: ${fontPx}px; min-width: 0;`);
         this.label.clutter_text.line_wrap = true;
         this.label.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
         this.label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
@@ -326,12 +331,23 @@ class PinnedTile {
     }
 
     _buildFolderMiniIcon(appIds) {
+        const metrics = this.applet._getPinnedMetrics();
+        const uiScale = (metrics.scale && metrics.logicalScale) ? (metrics.scale / metrics.logicalScale) : 1;
+        const previewSize = Math.max(20, Math.min(metrics.iconBox, Math.round(38 * metrics.scale)));
+        const padCss = Math.max(2, Math.round(4 * metrics.logicalScale));
+        const gapCss = Math.max(2, Math.round(3 * metrics.logicalScale));
+        const cellStage = Math.max(8, Math.floor((previewSize - (2 * padCss + gapCss) * uiScale) / 2));
+        const iconLogical = Math.max(8, Math.floor(cellStage / uiScale));
         let box = new St.BoxLayout({
             vertical: true,
             style_class: 'win11-folder-mini-preview',
+            width: previewSize,
+            height: previewSize,
             x_align: Clutter.ActorAlign.CENTER,
             y_align: Clutter.ActorAlign.CENTER
         });
+        if (box.set_style)
+            box.set_style(`padding: ${padCss}px;`);
 
         for (let r = 0; r < 2; r++) {
             let row = new St.BoxLayout({
@@ -339,13 +355,15 @@ class PinnedTile {
                 style_class: 'win11-folder-mini-row',
                 x_align: Clutter.ActorAlign.CENTER
             });
+            if (row.set_style)
+                row.set_style(`spacing: ${gapCss}px;`);
             for (let c = 0; c < 2; c++) {
                 let idx = r * 2 + c;
-                let cell = new St.Bin({ width: 13, height: 13 });
+                let cell = new St.Bin({ width: cellStage, height: cellStage });
                 if (idx < appIds.length) {
                     let app = appsys.lookup_app(appIds[idx]);
                     if (app) {
-                        cell.set_child(createAppIcon(app, 13));
+                        cell.set_child(createAppIcon(app, iconLogical));
                     }
                 }
                 row.add_actor(cell);
@@ -457,7 +475,8 @@ class FolderAppTile {
         });
         this.actor._delegate = this;
         this.actor.set_clip_to_allocation(true);
-        this.actor.set_style(`padding: ${5 * metrics.logicalScale}px ${3 * metrics.logicalScale}px ${3 * metrics.logicalScale}px; spacing: ${5 * metrics.logicalScale}px;`);
+        const padScale = Math.max(0.85, metrics.logicalScale);
+        this.actor.set_style(`padding: ${Math.round(5 * padScale)}px ${Math.round(3 * padScale)}px ${Math.round(3 * padScale)}px; spacing: ${Math.round(4 * padScale)}px;`);
         this.actor.set_position(this.currentX, this.currentY);
 
         this.iconContainer = new St.Bin({
@@ -475,8 +494,11 @@ class FolderAppTile {
             x_expand: true,
             x_align: Clutter.ActorAlign.CENTER
         });
-        this.label.height = 26 * metrics.scale;
-        this.label.set_style(`font-size: ${11.33 * metrics.logicalScale}px; min-width: 0;`);
+        this.label.height = Math.round(26 * metrics.scale);
+        const fontPx = metrics.logicalScale >= 1
+            ? Math.round(11.33 * metrics.logicalScale * 100) / 100
+            : Math.max(10.5, Math.round(11.33 * metrics.logicalScale * 10) / 10);
+        this.label.set_style(`font-size: ${fontPx}px; min-width: 0;`);
         this.label.clutter_text.line_wrap = true;
         this.label.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
         this.label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
@@ -667,7 +689,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         medium: {width: 738, height: 796, gridWidth: 666, cols: 7},
         large: {width: 834, height: 866, gridWidth: 762, cols: 8}
     };
-    static MENU_REF = {screenW: 1920, screenH: 1080, gap: 12,
+    static MENU_REF = {screenW: 1920, screenH: 1080, compactScreenH: 885, subFhdH: 768, gap: 12,
         icon: 32, box: 42, cellH: 82, folderCellW: 82, folderCellH: 86, mergeBottom: 48};
 
     constructor(orientation, panel_height, instance_id, metadata) {
@@ -790,7 +812,9 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this.settings.bind("menu-label", "menuLabel", () => this._updateIconAndLabel());
 
         this.settings.bind("icon-size-mode", "iconSizeMode", null); // Legacy migration input only.
-        this.settings.bind("menu-size", "menuSize", () => this._onLayoutChanged());
+        this.settings.bind("menu-size", "menuSize", () => this._onMenuSizeModeChanged());
+        this.settings.bind("custom-menu-width", "customMenuWidth", () => this._onCustomSizeSettingChanged());
+        this.settings.bind("custom-menu-height", "customMenuHeight", () => this._onCustomSizeSettingChanged());
         this.settings.bind("show-avatar", "showAvatar", () => this._refreshFooter());
         this.settings.bind("show-recent-apps", "showRecentApps", () => this._refreshRecentViews());
         this.settings.bind("show-recent-files", "showRecentFiles", () => this._onRecentFilesSettingChanged());
@@ -870,7 +894,9 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this._updateSearchPanelButton();
         this._updateActivateOnHover();
 
+        this._ensureStylesheetLoaded();
         Main.themeManager.connect("theme-set", () => {
+            this._ensureStylesheetLoaded();
             this._onLayoutChanged();
             this._updateIconAndLabel();
             this._updateSearchPanelButton();
@@ -957,6 +983,25 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             }
         }
         return str;
+    }
+
+    _ensureStylesheetLoaded() {
+        try {
+            if (typeof St === "undefined" || !global.stage)
+                return;
+            let themeContext = St.ThemeContext.get_for_stage(global.stage);
+            let theme = themeContext.get_theme();
+            let cssPath = GLib.build_filenamev([this._appletPath, "stylesheet.css"]);
+            if (theme && GLib.file_test(cssPath, GLib.FileTest.EXISTS)) {
+                let sheets = theme.get_custom_stylesheets();
+                let alreadyLoaded = sheets.some(s => String(s) === cssPath);
+                if (!alreadyLoaded) {
+                    theme.load_stylesheet(cssPath);
+                }
+            }
+        } catch (e) {
+            // Non-fatal fallback
+        }
     }
 
     _updateThemeColors() {
@@ -1334,6 +1379,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
 
     on_applet_removed_from_panel() {
         this._destroying = true;
+        this._destroyFooterTooltips();
         this._destroyRecentFiles();
         this._destroyFileSearch();
         if (this._geometrySignals) this._geometrySignals.disconnectAllSignals();
@@ -1431,6 +1477,29 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this._refreshPinnedSection();
     }
 
+    _onMenuSizeModeChanged() {
+        if (this.menuSize !== "custom" && this._isResizingMenu) {
+            this._endMenuResize(false);
+        }
+        if (this.menuSize === "custom") {
+            const bounds = this._getMenuSizeBounds();
+            const w = Math.max(bounds.minWidth, Math.min(bounds.maxWidth, Math.round(Number(this.customMenuWidth) || bounds.large.width)));
+            const h = Math.max(bounds.minHeight, Math.min(bounds.maxHeight, Math.round(Number(this.customMenuHeight) || bounds.large.height)));
+            if (w !== this.customMenuWidth) this.customMenuWidth = w;
+            if (h !== this.customMenuHeight) this.customMenuHeight = h;
+        }
+        this._onLayoutChanged();
+        this._writeLiveSizeState(this.menuSize === "custom");
+    }
+
+    _onCustomSizeSettingChanged() {
+        if (this._isResizingMenu)
+            return;
+        if (this.menuSize === "custom") {
+            this._onLayoutChanged();
+        }
+    }
+
     _onLayoutChanged() {
         if (this._destroying)
             return;
@@ -1444,6 +1513,8 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         if (folder) this._rebuildFolderGrid(folder);
         this._refreshAllAppsSection();
         this._refreshRecentSection();
+        if (this.searchHomeBox)
+            this._refreshSearchHomeView();
     }
 
     _getPinnedMetrics() {
@@ -1461,31 +1532,134 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         };
     }
 
+    _getSearchMetrics() {
+        return this._layoutMetrics && this._layoutMetrics.search ? this._layoutMetrics.search : {
+            leftW: 245, rightW: 352, topAppCardW: 112, topAppCardH: 92,
+            topAppIcon: 36, quickChipMaxW: 172, previewPaneW: 225, recentIcon: 28
+        };
+    }
+
     _getMenuAvailableArea() {
         const monitor = Main.layoutManager.findMonitorForActor(this.actor) || Main.layoutManager.primaryMonitor;
         const workspace = global.workspace_manager.get_active_workspace();
         return workspace.get_work_area_for_monitor(monitor.index);
     }
 
-    _getMenuGeometry() {
+    _getPresetGeometry(sizeKey) {
         const ref = Win11MenuApplet.MENU_REF;
-        const profile = Win11MenuApplet.MENU_SIZES[["small", "medium", "large"].includes(this.menuSize) ? this.menuSize : "large"];
+        const profile = Win11MenuApplet.MENU_SIZES[["small", "medium", "large"].includes(sizeKey) ? sizeKey : "large"];
         const uiScale = global.ui_scale || 1;
         const monitor = Main.layoutManager.findMonitorForActor(this.actor) || Main.layoutManager.primaryMonitor;
         const area = this._getMenuAvailableArea();
         const margin = 20 * uiScale;
-        // One uniform factor: the same fraction of the screen at any resolution, never stretched on
-        // ultra-wide screens and never larger than the work area. Monitor sizes are stage pixels, so
-        // HiDPI (ui_scale) is already included.
-        // Reserve the scaled panel gap too: at high stage scales it can exceed the fixed UI
-        // margin. One extra pixel protects the floor(size) + round(gap) placement on every side.
-        const scale = Math.max(0, Math.min(monitor.width / ref.screenW, monitor.height / ref.screenH,
+        // At 1920x1080 and above, scale is linear with the monitor dimensions. Below 1920x1080, a
+        // sub-linear curve transitions the effective reference height from 1080 toward the 885 px
+        // compact reference capture so sub-FHD screens (e.g. 1366x768) preserve the reference
+        // screen-coverage proportion (82.0% height in Small) instead of shrinking linearly.
+        const rawScale = Math.min(monitor.width / ref.screenW, monitor.height / ref.screenH);
+        const subFhdExponent = Math.log(ref.subFhdH / ref.compactScreenH) / Math.log(ref.subFhdH / ref.screenH);
+        const screenScale = rawScale > 0 && rawScale < 1 ? Math.pow(rawScale, subFhdExponent) : rawScale;
+        const scale = Math.max(0, Math.min(screenScale,
             Math.max(1, area.width - margin) / profile.width,
             Math.max(1, area.height - margin) / profile.height,
             Math.max(1, area.width - 1) / (profile.width + ref.gap),
             Math.max(1, area.height - 1) / (profile.height + ref.gap)));
         return { width: Math.max(1, Math.floor(profile.width * scale)),
-            height: Math.max(1, Math.floor(profile.height * scale)), scale, uiScale, profile };
+            height: Math.max(1, Math.floor(profile.height * scale)), scale,
+            logicalScale: scale / uiScale, screenScale, uiScale,
+            colFillRatio: 1, profile };
+    }
+
+    _getMenuSizeBounds() {
+        const ref = Win11MenuApplet.MENU_REF;
+        const uiScale = global.ui_scale || 1;
+        const monitor = Main.layoutManager.findMonitorForActor(this.actor) || Main.layoutManager.primaryMonitor;
+        const area = this._getMenuAvailableArea();
+        const margin = 20 * uiScale;
+        const small = this._getPresetGeometry("small");
+        const medium = this._getPresetGeometry("medium");
+        const large = this._getPresetGeometry("large");
+        const screenScale = large.screenScale;
+        const gapPx = Math.max(1, Math.round(ref.gap * large.scale));
+        const availW = Math.max(1, Math.min(area.width - margin, area.width - 1 - gapPx));
+        const availH = Math.max(1, Math.min(area.height - margin, area.height - 1 - gapPx));
+        const minWidth = small.width;
+        const minHeight = small.height;
+        const maxWidth = Math.max(large.width, Math.min(
+            Math.floor(availW),
+            Math.floor(monitor.width * 0.75),
+            Math.round(1218 * screenScale)
+        ));
+        const maxHeight = Math.max(large.height, Math.min(
+            Math.floor(availH),
+            Math.floor(monitor.height * 0.88),
+            Math.round(980 * screenScale)
+        ));
+        return { minWidth, maxWidth, minHeight, maxHeight, small, medium, large, screenScale, uiScale };
+    }
+
+    // Maps any menu dimensions (rawWidth, rawHeight) to proportional columns and icon scaling:
+    // - When (width, height) matches Small, Medium, or Large on the active monitor, cols (6, 7, 8)
+    //   and iconSize match that preset identically (colFillRatio === 1).
+    // - Between presets (and above Large), icons start at the minimum size for the new column count
+    //   ((cols - 1) / cols of the preset maximum) and grow smoothly up to the preset maximum at the
+    //   next column threshold, then add another column and repeat.
+    _computeCustomLayoutProfile(rawWidth, rawHeight, bounds = null) {
+        const b = bounds || this._getMenuSizeBounds();
+        const width = Math.max(b.minWidth, Math.min(b.maxWidth, Math.round(Number(rawWidth) || b.large.width)));
+        const height = Math.max(b.minHeight, Math.min(b.maxHeight, Math.round(Number(rawHeight) || b.large.height)));
+        const w6 = b.small.width;
+        const w7 = b.medium.width;
+        const w8 = b.large.width;
+        const stepW = Math.max(48, Math.round(96 * b.screenScale));
+        let cols, colFillRatio, scale;
+
+        if (width <= w6) {
+            cols = 6;
+            colFillRatio = 1;
+            scale = b.small.scale;
+        } else if (width <= w7) {
+            cols = 7;
+            const t = (width - w6) / Math.max(1, w7 - w6);
+            colFillRatio = (6 + t) / 7;
+            scale = b.small.scale + t * (b.medium.scale - b.small.scale);
+        } else if (width <= w8) {
+            cols = 8;
+            const t = (width - w7) / Math.max(1, w8 - w7);
+            colFillRatio = (7 + t) / 8;
+            scale = b.medium.scale + t * (b.large.scale - b.medium.scale);
+        } else {
+            const extraCols = Math.ceil((width - w8) / stepW);
+            cols = 8 + extraCols;
+            const wPrev = w8 + (extraCols - 1) * stepW;
+            const wCurr = w8 + extraCols * stepW;
+            const t = (width - wPrev) / Math.max(1, wCurr - wPrev);
+            colFillRatio = ((cols - 1) + t) / cols;
+            scale = b.large.scale;
+        }
+
+        const safeScale = Math.max(0.01, scale);
+        const profile = {
+            width: Math.round(width / safeScale),
+            height: Math.round(height / safeScale),
+            gridWidth: (width - 72 * safeScale) / safeScale,
+            cols
+        };
+        return { width, height, scale, logicalScale: scale / b.uiScale,
+            screenScale: b.screenScale, uiScale: b.uiScale,
+            colFillRatio, bounds: b, profile };
+    }
+
+    _getMenuGeometry() {
+        if (this.menuSize === "custom") {
+            const bounds = this._getMenuSizeBounds();
+            const reqW = this._isResizingMenu && this._liveCustomWidth
+                ? this._liveCustomWidth : (this.customMenuWidth || bounds.large.width);
+            const reqH = this._isResizingMenu && this._liveCustomHeight
+                ? this._liveCustomHeight : (this.customMenuHeight || bounds.large.height);
+            return this._computeCustomLayoutProfile(reqW, reqH, bounds);
+        }
+        return this._getPresetGeometry(this.menuSize);
     }
 
     _getMenuFloatOffset() {
@@ -1514,22 +1688,67 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         const scale = geometry.scale;
         const logicalScale = scale / geometry.uiScale;
         const cols = geometry.profile.cols;
-        const iconSize = mode.icon * logicalScale;
-        const iconBox = mode.box * scale;
+        const colFillRatio = geometry.colFillRatio !== undefined ? geometry.colFillRatio : 1;
+        const maxIconBox = Math.max(1, Math.round(mode.box * scale));
+        const maxIconSize = logicalScale >= 1
+            ? Math.round(mode.icon * logicalScale)
+            : Math.max(1, Math.min(mode.icon, Math.floor(maxIconBox / geometry.uiScale) - 2));
+        const iconSize = colFillRatio >= 0.999
+            ? maxIconSize
+            : Math.max(16, Math.min(maxIconSize, Math.round(maxIconSize * colFillRatio)));
+        const iconBox = colFillRatio >= 0.999
+            ? maxIconBox
+            : Math.max(Math.min(maxIconBox, iconSize * geometry.uiScale + 2), Math.min(maxIconBox, Math.round(maxIconBox * colFillRatio)));
         // The scroll sections retain native 26px side padding, and folder overlay/card retain
         // 28px + 24px per side (CSS logical pixels). Respect unusually thick theme chrome too.
         const gridWidth = Math.max(1, Math.min(geometry.profile.gridWidth * scale, contentWidth - 52 * geometry.uiScale));
         const cellW = Math.max(1, Math.floor(gridWidth / cols));
-        const pinned = {cols, cellW,
-            cellH: Math.max(1, Math.round(mode.cellH * scale)),
-            iconSize, iconBox, scale, logicalScale,
+        const cellH = Math.max(1, Math.round(mode.cellH * (colFillRatio >= 0.999 ? scale : scale * (0.9 + 0.1 * colFillRatio))));
+        const pinned = {cols, cellW, cellH,
+            iconSize, iconBox, scale, logicalScale, colFillRatio,
             mergeInset: 17 / 76 * cellW,
             mergeTop: 6 * scale, mergeBottom: mode.mergeBottom * scale};
-        this._layoutMetrics = {pinned, folder: {cols: 4,
-            cellW: Math.max(1, Math.min(Math.round(mode.folderCellW * scale), Math.floor((contentWidth - 104 * geometry.uiScale) / 4))),
-            cellH: Math.max(1, Math.round(mode.folderCellH * scale)),
-            iconSize, iconBox, scale, logicalScale}};
+        const widthScale = Math.max(geometry.uiScale, scale, contentWidth / 738);
+        const searchInnerW = Math.max(180, contentWidth - Math.round(74 * Math.max(geometry.uiScale, scale)));
+        const searchLeftW = Math.max(140, Math.min(Math.round(245 * widthScale), Math.round(searchInnerW * 0.38)));
+        const searchRightW = Math.max(160, searchInnerW - searchLeftW);
+        const topAppCardW = Math.max(72, Math.min(Math.round(112 * widthScale), Math.floor((searchRightW - Math.round(16 * geometry.uiScale)) / 3)));
+        const topAppCardH = Math.max(68, Math.round(92 * scale));
+        const topAppIcon = logicalScale >= 1 ? Math.round(36 * logicalScale * colFillRatio) : Math.max(28, Math.min(36, iconSize + 2));
+        const quickChipMaxW = Math.max(60, Math.floor((searchRightW - Math.round(8 * geometry.uiScale)) / 2) - Math.round(28 * geometry.uiScale));
+        const previewPaneW = Math.max(150, Math.min(Math.round(225 * widthScale), Math.round((contentWidth - Math.round(66 * geometry.uiScale)) * 0.36)));
+        const recentIcon = logicalScale > 1 ? Math.round(28 * logicalScale) : 28;
+        this._layoutMetrics = {
+            pinned,
+            folder: {cols: 4,
+                cellW: Math.max(1, Math.min(Math.round(mode.folderCellW * scale), Math.floor((contentWidth - 104 * geometry.uiScale) / 4))),
+                cellH: Math.max(1, Math.round(mode.folderCellH * scale)),
+                iconSize, iconBox, scale, logicalScale},
+            search: {leftW: searchLeftW, rightW: searchRightW, topAppCardW, topAppCardH,
+                topAppIcon, quickChipMaxW, previewPaneW, recentIcon}
+        };
         this.applicationIconSize = iconSize;
+        this.listIconSize = recentIcon;
+        if (this.searchLeftCol)
+            this.searchLeftCol.width = searchLeftW;
+        if (this.searchPreviewPane)
+            this.searchPreviewPane.width = previewPaneW;
+
+        // Ensure horizontal section padding + vertical scrollbar width (~21 * uiScale) never causes
+        // startScrollView to exceed contentWidth or shift Clutter's StScrollable paint volume.
+        const vscrollReserve = Math.round(22 * geometry.uiScale);
+        const availPadLogical = Math.max(16, Math.floor((contentWidth - cols * cellW - vscrollReserve) / geometry.uiScale));
+        const padLeft = Math.max(10, Math.min(Math.round(26 * Math.max(1, logicalScale)), Math.ceil(availPadLogical * 0.56)));
+        const padRight = Math.max(6, Math.min(padLeft, availPadLogical - padLeft));
+        const sectionStyle = `padding: 0 ${padRight}px 0 ${padLeft}px;`;
+        for (const sec of [this.pinnedSectionBox, this.recentSectionBox, this.allAppsSectionBox]) {
+            if (sec && sec.set_style)
+                sec.set_style(sectionStyle);
+        }
+        if (this.resizeHandle) {
+            this.resizeHandle.visible = (this.menuSize === "custom");
+        }
+
         // Lock both requested dimensions, not just natural size: overflow belongs
         // to the existing scrollviews, never to a growing popup/root overlay.
         this.menu.actor.set_size(geometry.width, geometry.height);
@@ -1542,6 +1761,34 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         if (this.menu && this.menu.isOpen) {
             let [xPos, yPos] = this.menu._calculatePosition();
             this.menu.actor.set_position(xPos, yPos);
+        }
+        if (!this._isResizingMenu) {
+            this._writeLiveSizeState(false);
+        }
+    }
+
+    _writeLiveSizeState(syncValues = false) {
+        if (this._destroying || typeof GLib === "undefined" || !this.instance_id)
+            return;
+        try {
+            const bounds = this._getMenuSizeBounds();
+            const geo = this._menuGeometry || this._getMenuGeometry();
+            const dir = GLib.build_filenamev([GLib.get_user_cache_dir(), "win11-menu"]);
+            GLib.mkdir_with_parents(dir, 0o755);
+            const path = GLib.build_filenamev([dir, `live-size-${this.instance_id}.json`]);
+            const payload = JSON.stringify({
+                width: geo.width,
+                height: geo.height,
+                minWidth: bounds.minWidth,
+                maxWidth: bounds.maxWidth,
+                minHeight: bounds.minHeight,
+                maxHeight: bounds.maxHeight,
+                syncValues: Boolean(syncValues),
+                timestamp: Date.now()
+            });
+            GLib.file_set_contents(path, payload);
+        } catch (e) {
+            // Non-fatal in restricted or headless test environments
         }
     }
 
@@ -1648,6 +1895,208 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         // 5. Floating Context / Power Menu Layer (hidden by default)
         this._buildFloatingMenuOverlay();
         this.rootStack.add_actor(this.floatingMenuBackdrop);
+
+        // 6. Top-Right Interactive Corner Resize Handle (shown when menu-size === "custom")
+        this._buildResizeHandle();
+        this.rootStack.add_actor(this.resizeHandle);
+        this._syncMenuGeometry();
+    }
+
+    _buildResizeHandle() {
+        this.resizeHandle = new St.Widget({
+            layout_manager: new Clutter.BinLayout(),
+            style_class: 'win11-resize-corner-handle',
+            reactive: true,
+            track_hover: true,
+            width: 26,
+            height: 26,
+            x_expand: true,
+            y_expand: true,
+            x_align: Clutter.ActorAlign.END,
+            y_align: Clutter.ActorAlign.START,
+            visible: this.menuSize === "custom"
+        });
+        const grip = new St.Widget({
+            style_class: 'win11-resize-corner-grip',
+            x_align: Clutter.ActorAlign.END,
+            y_align: Clutter.ActorAlign.START
+        });
+        this.resizeHandle.add_actor(grip);
+
+        this.resizeHandle.connect('enter-event', () => {
+            if (this.menuSize === "custom") {
+                try { global.set_cursor(Cinnamon.Cursor.RESIZE_TOP_RIGHT); } catch (e) {}
+            }
+        });
+        this.resizeHandle.connect('leave-event', () => {
+            if (!this._isResizingMenu) {
+                try { global.unset_cursor(); } catch (e) {}
+            }
+        });
+        this.resizeHandle.connect('button-press-event', (actor, event) => {
+            if (this.menuSize !== "custom" || event.get_button() !== Clutter.BUTTON_PRIMARY)
+                return Clutter.EVENT_PROPAGATE;
+            this._beginMenuResize(event);
+            return Clutter.EVENT_STOP;
+        });
+    }
+
+    _beginMenuResize(event) {
+        if (this._isResizingMenu)
+            return;
+        this.closeFloatingMenus();
+        const [stageX, stageY] = event.get_coords();
+        const geo = this._menuGeometry || this._getMenuGeometry();
+        const bounds = this._getMenuSizeBounds();
+        this._isResizingMenu = true;
+        this._liveCustomWidth = geo.width;
+        this._liveCustomHeight = geo.height;
+        this._lastLiveWriteTime = 0;
+        this._resizeStart = {
+            stageX,
+            stageY,
+            width: geo.width,
+            height: geo.height,
+            bounds,
+            lastCols: this._getPinnedMetrics().cols,
+            lastIconSize: this.applicationIconSize || 32
+        };
+        if (this.resizeHandle)
+            this.resizeHandle.add_style_class_name('win11-resize-corner-handle-active');
+        if (this.menu)
+            this.menu.passEvents = true;
+        try { global.set_cursor(Cinnamon.Cursor.RESIZE_TOP_RIGHT); } catch (e) {}
+        this._resizeStageEventId = global.stage.connect('captured-event', this._onResizeCapturedEvent.bind(this));
+    }
+
+    _onResizeCapturedEvent(stage, event) {
+        if (!this._isResizingMenu || !this._resizeStart)
+            return Clutter.EVENT_PROPAGATE;
+        const type = event.type();
+        if (type === Clutter.EventType.MOTION) {
+            const [stageX, stageY] = event.get_coords();
+            const dx = stageX - this._resizeStart.stageX;
+            const dy = this._resizeStart.stageY - stageY;
+            const b = this._resizeStart.bounds;
+            const newW = Math.max(b.minWidth, Math.min(b.maxWidth, Math.round(this._resizeStart.width + dx)));
+            const newH = Math.max(b.minHeight, Math.min(b.maxHeight, Math.round(this._resizeStart.height + dy)));
+            this._pendingResizeDims = { width: newW, height: newH };
+            if (!this._resizeFrameTimer) {
+                this._resizeFrameTimer = Mainloop.timeout_add(16, () => {
+                    this._resizeFrameTimer = 0;
+                    if (!this._isResizingMenu || !this._pendingResizeDims)
+                        return GLib.SOURCE_REMOVE;
+                    const { width, height } = this._pendingResizeDims;
+                    this._pendingResizeDims = null;
+                    this._applyLiveResizeStep(width, height);
+                    return GLib.SOURCE_REMOVE;
+                });
+            }
+            return Clutter.EVENT_STOP;
+        }
+        if (type === Clutter.EventType.BUTTON_RELEASE) {
+            if (this._pendingResizeDims) {
+                const { width, height } = this._pendingResizeDims;
+                this._pendingResizeDims = null;
+                this._applyLiveResizeStep(width, height);
+            }
+            this._endMenuResize(true);
+            return Clutter.EVENT_STOP;
+        }
+        return Clutter.EVENT_PROPAGATE;
+    }
+
+    _applyLiveResizeStep(width, height) {
+        if (width === this._liveCustomWidth && height === this._liveCustomHeight)
+            return;
+        this._liveCustomWidth = width;
+        this._liveCustomHeight = height;
+        this._syncMenuGeometry();
+        this._updatePinnedGridLive();
+        const metrics = this._getPinnedMetrics();
+        const colsChanged = this._resizeStart && metrics.cols !== this._resizeStart.lastCols;
+        if (colsChanged) {
+            this._resizeStart.lastCols = metrics.cols;
+            if (this.allAppsViewMode === "grid" || this.allAppsViewMode === "categories")
+                this._refreshAllAppsSection();
+        }
+        if (this._currentPopupMode === "search" && this.searchHomeBox && this.searchHomeBox.visible) {
+            this._refreshSearchHomeView();
+        }
+        const now = Date.now();
+        if (now - (this._lastLiveWriteTime || 0) >= 40) {
+            this._lastLiveWriteTime = now;
+            this._writeLiveSizeState(true);
+        }
+    }
+
+    _updatePinnedGridLive() {
+        if (!this.pinnedGridActor)
+            return;
+        const items = this.pinnedItems || [];
+        const metrics = this._getPinnedMetrics();
+        const maxVisible = this.pinnedExpanded ? items.length : Math.min(items.length, metrics.cols * 2);
+        if (maxVisible !== this._pinnedTiles.length) {
+            this._refreshPinnedSection();
+            return;
+        }
+        const visibleCount = Math.max(1, maxVisible);
+        const numRows = Math.max(2, Math.ceil(visibleCount / metrics.cols));
+        this.pinnedGridActor.set_size(metrics.cols * metrics.cellW, numRows * metrics.cellH);
+        const iconChanged = !this._resizeStart || metrics.iconSize !== this._resizeStart.lastIconSize;
+        if (this._resizeStart)
+            this._resizeStart.lastIconSize = metrics.iconSize;
+
+        for (let i = 0; i < this._pinnedTiles.length; i++) {
+            const tile = this._pinnedTiles[i];
+            if (!tile || !tile.actor)
+                continue;
+            tile.currentSlot = i;
+            tile.currentX = (i % metrics.cols) * metrics.cellW;
+            tile.currentY = Math.floor(i / metrics.cols) * metrics.cellH;
+            tile.actor.set_size(metrics.cellW, metrics.cellH);
+            tile.actor.set_position(tile.currentX, tile.currentY);
+            if (tile.iconContainer)
+                tile.iconContainer.set_size(metrics.iconBox, metrics.iconBox);
+            if (tile.label)
+                tile.label.height = Math.round(26 * metrics.scale);
+            if (iconChanged && tile.itemData && tile.itemData.type !== 'folder' && tile.iconActor && tile.iconActor.set_icon_size) {
+                tile.iconActor.set_icon_size(metrics.iconSize);
+            }
+        }
+    }
+
+    _endMenuResize(commit = true) {
+        if (this._resizeFrameTimer) {
+            Mainloop.source_remove(this._resizeFrameTimer);
+            this._resizeFrameTimer = 0;
+        }
+        if (this._resizeStageEventId) {
+            global.stage.disconnect(this._resizeStageEventId);
+            this._resizeStageEventId = 0;
+        }
+        this._pendingResizeDims = null;
+        const wasResizing = this._isResizingMenu;
+        const finalW = this._liveCustomWidth;
+        const finalH = this._liveCustomHeight;
+        this._isResizingMenu = false;
+        this._resizeStart = null;
+        if (this.resizeHandle)
+            this.resizeHandle.remove_style_class_name('win11-resize-corner-handle-active');
+        if (!DND.isDragging() && this.menu)
+            this.menu.passEvents = false;
+        try { global.unset_cursor(); } catch (e) {}
+        if (wasResizing && commit && finalW && finalH) {
+            this.customMenuWidth = finalW;
+            this.customMenuHeight = finalH;
+            this._liveCustomWidth = 0;
+            this._liveCustomHeight = 0;
+            this._onLayoutChanged();
+            this._writeLiveSizeState(true);
+        } else {
+            this._liveCustomWidth = 0;
+            this._liveCustomHeight = 0;
+        }
     }
 
     _updateSearchPlaceholder() {
@@ -1676,7 +2125,13 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this.startScrollView.set_clip_to_allocation(true);
 
         let vscroll = this.startScrollView.get_vscroll_bar();
-        vscroll.get_adjustment().connect('notify::value', () => this._queueAllAppsMaterialize());
+        vscroll.get_adjustment().connect('notify::value', () => {
+            if (this.startScrollView && this.startScrollView.queue_redraw)
+                this.startScrollView.queue_redraw();
+            if (this.pinnedGridActor && this.pinnedGridActor.queue_redraw)
+                this.pinnedGridActor.queue_redraw();
+            this._queueAllAppsMaterialize();
+        });
         vscroll.connect('scroll-start', () => { this.menu.passEvents = true; });
         vscroll.connect('scroll-stop', () => { this.menu.passEvents = false; });
 
@@ -1685,6 +2140,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             style_class: 'win11-start-scroll-content',
             x_expand: true
         });
+        this.startScrollContent.set_style('padding-left: 0; padding-right: 0;');
         this.startScrollView.add_actor(this.startScrollContent);
 
         // --- Section 1: Pinned (Fixado) ---
@@ -1884,7 +2340,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         // --- Sub-view: All Recent Items ("Mostrar tudo >" -> "<- Voltar") ---
         this.allRecentSubView = new St.BoxLayout({
             vertical: true,
-            style_class: 'win11-start-scroll-content',
+            style_class: 'win11-all-recent-subview',
             x_expand: true,
             y_expand: true,
             visible: false
@@ -1934,6 +2390,14 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             y_expand: true
         });
         this.allRecentScrollView.set_policy(St.PolicyType.NEVER, St.PolicyType.AUTOMATIC);
+        if (this.allRecentScrollView.set_clip_to_allocation)
+            this.allRecentScrollView.set_clip_to_allocation(true);
+        try {
+            this.allRecentScrollView.get_vscroll_bar().get_adjustment().connect('notify::value', () => {
+                if (this.allRecentScrollView && this.allRecentScrollView.queue_redraw)
+                    this.allRecentScrollView.queue_redraw();
+            });
+        } catch (e) {}
         this.allRecentListBox = new St.BoxLayout({
             vertical: true,
             style_class: 'win11-all-apps-box',
@@ -1981,9 +2445,12 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         });
 
         // Left Column: Recent
+        const sm = this._getSearchMetrics();
         this.searchLeftCol = new St.BoxLayout({
             vertical: true,
             style_class: 'win11-search-left-col',
+            width: sm.leftW,
+            min_width: 0,
             y_expand: true
         });
         this.searchRecentTitle = new St.Label({
@@ -1996,6 +2463,14 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             y_expand: true
         });
         this.searchRecentScrollView.set_policy(St.PolicyType.NEVER, St.PolicyType.AUTOMATIC);
+        if (this.searchRecentScrollView.set_clip_to_allocation)
+            this.searchRecentScrollView.set_clip_to_allocation(true);
+        try {
+            this.searchRecentScrollView.get_vscroll_bar().get_adjustment().connect('notify::value', () => {
+                if (this.searchRecentScrollView && this.searchRecentScrollView.queue_redraw)
+                    this.searchRecentScrollView.queue_redraw();
+            });
+        } catch (e) {}
         this.searchRecentListBox = new St.BoxLayout({
             vertical: true,
             style_class: 'win11-search-recent-list',
@@ -2010,6 +2485,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this.searchRightCol = new St.BoxLayout({
             vertical: true,
             style_class: 'win11-search-right-col',
+            min_width: 0,
             x_expand: true,
             y_expand: true
         });
@@ -2017,6 +2493,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this.quickSearchesSection = new St.BoxLayout({
             vertical: true,
             style_class: 'win11-quick-searches-box',
+            min_width: 0,
             x_expand: true
         });
         this.quickSearchesTitle = new St.Label({
@@ -2026,6 +2503,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this.quickSearchesChipsBox = new St.BoxLayout({
             vertical: true,
             style_class: 'win11-quick-searches-box',
+            min_width: 0,
             x_expand: true
         });
         this.quickSearchesSection.add_actor(this.quickSearchesTitle);
@@ -2034,6 +2512,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this.topAppsSection = new St.BoxLayout({
             vertical: true,
             style_class: 'win11-top-apps-grid',
+            min_width: 0,
             x_expand: true
         });
         this.topAppsTitle = new St.Label({
@@ -2043,6 +2522,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this.topAppsGridBox = new St.BoxLayout({
             vertical: true,
             style_class: 'win11-top-apps-grid',
+            min_width: 0,
             x_expand: true
         });
         this.topAppsSection.add_actor(this.topAppsTitle);
@@ -2079,19 +2559,32 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this.searchResultsColumns = new St.BoxLayout({
             vertical: false,
             style_class: 'win11-search-results-columns',
+            min_width: 0,
             x_expand: true,
             y_expand: true
         });
+        if (this.searchResultsColumns.set_clip_to_allocation)
+            this.searchResultsColumns.set_clip_to_allocation(true);
 
         this.searchResultsScrollView = new St.ScrollView({
             style_class: 'vfade',
+            min_width: 0,
             x_expand: true,
             y_expand: true
         });
         this.searchResultsScrollView.set_policy(St.PolicyType.NEVER, St.PolicyType.AUTOMATIC);
+        if (this.searchResultsScrollView.set_clip_to_allocation)
+            this.searchResultsScrollView.set_clip_to_allocation(true);
+        try {
+            this.searchResultsScrollView.get_vscroll_bar().get_adjustment().connect('notify::value', () => {
+                if (this.searchResultsScrollView && this.searchResultsScrollView.queue_redraw)
+                    this.searchResultsScrollView.queue_redraw();
+            });
+        } catch (e) {}
         this.searchResultsListBox = new St.BoxLayout({
             vertical: true,
             style_class: 'win11-search-results-list-box',
+            min_width: 0,
             x_expand: true
         });
         this.searchResultsScrollView.add_actor(this.searchResultsListBox);
@@ -2099,8 +2592,12 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this.searchPreviewPane = new St.BoxLayout({
             vertical: true,
             style_class: 'win11-search-preview-pane',
+            width: this._getSearchMetrics().previewPaneW,
+            min_width: 0,
             y_expand: true
         });
+        if (this.searchPreviewPane.set_clip_to_allocation)
+            this.searchPreviewPane.set_clip_to_allocation(true);
 
         this.searchResultsColumns.add(this.searchResultsScrollView, { expand: true, x_fill: true, y_fill: true });
         this.searchResultsColumns.add(this.searchPreviewPane, { expand: false, y_fill: true });
@@ -2219,14 +2716,47 @@ class Win11MenuApplet extends Applet.TextIconApplet {
                 command: item.command || open(item.path)}));
     }
 
+    _destroyFooterTooltips() {
+        if (this._footerTooltips) {
+            for (const tip of this._footerTooltips) {
+                try {
+                    if (tip && typeof tip.hide === 'function')
+                        tip.hide();
+                    if (tip && typeof tip.destroy === 'function')
+                        tip.destroy();
+                } catch (e) {}
+            }
+        }
+        this._footerTooltips = [];
+    }
+
+    _attachFooterTooltip(actor, text) {
+        if (!actor || !text)
+            return null;
+        if (!this._footerTooltips)
+            this._footerTooltips = [];
+        if (Tooltips && typeof Tooltips.Tooltip === 'function') {
+            try {
+                const tip = new Tooltips.Tooltip(actor, text);
+                actor._tooltip = tip;
+                this._footerTooltips.push(tip);
+                return tip;
+            } catch (e) {}
+        }
+        return null;
+    }
+
     _refreshFooter() {
         if (!this.footerBar)
             return;
+
+        this._destroyFooterTooltips();
 
         // 1. User Avatar & Name
         this.userProfileBtn.destroy_all_children();
         if (this.showAvatar) {
             this.userProfileBtn.show();
+            this._attachFooterTooltip(this.userProfileBtn, this.t("account_settings"));
             try {
                 let user = AccountsService.UserManager.get_default().get_user(GLib.get_user_name());
                 let avatar = new UserWidget.Avatar(user, { iconSize: 28 });
@@ -2284,7 +2814,12 @@ class Win11MenuApplet extends Applet.TextIconApplet {
                 icon_type: St.IconType.SYMBOLIC
             });
             btn.set_child(icon);
-            btn.connect('clicked', () => onClick(btn));
+            this._attachFooterTooltip(btn, tooltip);
+            btn.connect('clicked', () => {
+                if (btn._tooltip && typeof btn._tooltip.hide === 'function')
+                    btn._tooltip.hide();
+                onClick(btn);
+            });
             this.footerActionsBox.add_actor(btn);
             return btn;
         };
@@ -2492,6 +3027,8 @@ class Win11MenuApplet extends Applet.TextIconApplet {
     }
 
     _cancelTransientInteractions() {
+        if (this._isResizingMenu)
+            this._endMenuResize(false);
         this._cancelAllAppsMaterialize();
         this._cancelCategoryScroll();
         this._cancelFolderRenameTimers();
@@ -3797,13 +4334,14 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         });
 
         btn.set_clip_to_allocation(true);
+        const iconPx = this.listIconSize || 28;
         let icon;
         if (item.kind === 'app') {
-            icon = createAppIcon(item.app, 28);
+            icon = createAppIcon(item.app, iconPx);
         } else if (item.docInfo) {
-            icon = item.docInfo.createIcon(28);
+            icon = item.docInfo.createIcon(iconPx);
         } else {
-            icon = new St.Icon({ icon_name: 'text-x-generic', icon_size: 28 });
+            icon = new St.Icon({ icon_name: 'text-x-generic', icon_size: iconPx });
         }
 
         let textBox = new St.BoxLayout({
@@ -4286,6 +4824,11 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             height: metrics.cellH,
             x_align: Clutter.ActorAlign.CENTER
         });
+        if (box.set_clip_to_allocation)
+            box.set_clip_to_allocation(true);
+        const padScale = Math.max(0.85, metrics.logicalScale || 1);
+        if (box.set_style)
+            box.set_style(`padding: ${Math.round(5 * padScale)}px ${Math.round(3 * padScale)}px ${Math.round(3 * padScale)}px; spacing: ${Math.round(4 * padScale)}px;`);
         let iconBin = new St.Bin({ width: metrics.iconBox, height: metrics.iconBox, x_align: St.Align.MIDDLE, y_align: St.Align.MIDDLE });
         iconBin.set_child(createAppIcon(app, this.applicationIconSize || 32));
         let lbl = new St.Label({
@@ -4294,6 +4837,12 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             x_expand: true,
             x_align: Clutter.ActorAlign.CENTER
         });
+        lbl.height = Math.round(26 * (metrics.scale || 1));
+        const fontPx = (metrics.logicalScale || 1) >= 1
+            ? Math.round(11.33 * (metrics.logicalScale || 1) * 100) / 100
+            : Math.max(10.5, Math.round(11.33 * (metrics.logicalScale || 1) * 10) / 10);
+        if (lbl.set_style)
+            lbl.set_style(`font-size: ${fontPx}px; min-width: 0;`);
         lbl.clutter_text.ellipsize = Pango.EllipsizeMode.END;
         box.add_actor(iconBin);
         box.add_actor(lbl);
@@ -4315,19 +4864,22 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         let row = new St.BoxLayout({
             vertical: false,
             style_class: 'win11-all-apps-item',
+            min_width: 0,
             reactive: true,
             track_hover: true,
             x_expand: true
         });
 
-        let icon = createAppIcon(app, 28);
+        let icon = createAppIcon(app, this.listIconSize || 28);
         let labelBox = new St.BoxLayout({
             vertical: true,
+            min_width: 0,
             x_expand: true,
             y_align: Clutter.ActorAlign.CENTER
         });
         let nameLbl = new St.Label({
             text: app.get_name(),
+            min_width: 0,
             style_class: 'win11-all-apps-item-label'
         });
         nameLbl.clutter_text.ellipsize = Pango.EllipsizeMode.END;
@@ -4432,6 +4984,10 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         if (!this.searchHomeBox)
             return;
 
+        const sm = this._getSearchMetrics();
+        if (this.searchLeftCol)
+            this.searchLeftCol.width = sm.leftW;
+
         this.searchRecentTitle.set_text(this.t("recent"));
         this.quickSearchesTitle.set_text(this.t("quick_searches"));
         this.topAppsTitle.set_text(this.t("top_apps"));
@@ -4443,16 +4999,18 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             let row = new St.BoxLayout({
                 vertical: false,
                 style_class: 'win11-search-recent-row',
+                min_width: 0,
                 reactive: true,
                 track_hover: true,
                 x_expand: true
             });
             let icon = item.kind === 'app'
-                ? createAppIcon(item.app, 22)
-                : (item.docInfo ? item.docInfo.createIcon(22) : new St.Icon({ icon_name: 'text-x-generic', icon_size: 22 }));
+                ? createAppIcon(item.app, sm.recentIcon)
+                : (item.docInfo ? item.docInfo.createIcon(sm.recentIcon) : new St.Icon({ icon_name: 'text-x-generic', icon_size: sm.recentIcon }));
             let lbl = new St.Label({
                 text: item.title,
                 style_class: 'win11-search-recent-label',
+                min_width: 0,
                 y_align: Clutter.ActorAlign.CENTER
             });
             lbl.clutter_text.ellipsize = Pango.EllipsizeMode.END;
@@ -4491,6 +5049,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             let row = new St.BoxLayout({
                 vertical: false,
                 style_class: 'win11-quick-searches-row',
+                min_width: 0,
                 x_expand: true
             });
             for (let c = 0; c < 2; c++) {
@@ -4501,9 +5060,14 @@ class Win11MenuApplet extends Applet.TextIconApplet {
                 let chip = new St.Button({
                     label: qs.label,
                     style_class: 'win11-quick-search-chip',
+                    min_width: 0,
                     reactive: true,
                     track_hover: true
                 });
+                if (chip.set_style)
+                    chip.set_style(`max-width: ${sm.quickChipMaxW}px;`);
+                if (chip.child && chip.child.clutter_text)
+                    chip.child.clutter_text.ellipsize = Pango.EllipsizeMode.END;
                 chip.connect('clicked', () => {
                     this.menu.close();
                     qs.action();
@@ -4520,6 +5084,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             let row = new St.BoxLayout({
                 vertical: false,
                 style_class: 'win11-top-apps-row',
+                min_width: 0,
                 x_expand: true
             });
             for (let c = 0; c < 3; c++) {
@@ -4530,15 +5095,19 @@ class Win11MenuApplet extends Applet.TextIconApplet {
                 let card = new St.BoxLayout({
                     vertical: true,
                     style_class: 'win11-top-app-card',
+                    width: sm.topAppCardW,
+                    height: sm.topAppCardH,
+                    min_width: 0,
                     reactive: true,
                     track_hover: true,
                     x_align: Clutter.ActorAlign.CENTER,
                     y_align: Clutter.ActorAlign.CENTER
                 });
-                let icon = createAppIcon(app, 36);
+                let icon = createAppIcon(app, sm.topAppIcon);
                 let lbl = new St.Label({
                     text: app.get_name(),
                     style_class: 'win11-top-app-card-label',
+                    min_width: 0,
                     x_expand: true,
                     x_align: Clutter.ActorAlign.CENTER
                 });
@@ -5001,15 +5570,16 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             x_expand: true
         });
 
+        const iconPx = this.listIconSize || 28;
         let icon;
         if (matchItem.kind === 'app') {
-            icon = createAppIcon(matchItem.app, 28);
+            icon = createAppIcon(matchItem.app, iconPx);
         } else if (matchItem.icon) {
             icon = matchItem.icon;
         } else if (matchItem.kind === 'file') {
-            icon = new St.Icon({ icon_name: matchItem.isDirectory ? 'folder' : 'text-x-generic', icon_size: 28 });
+            icon = new St.Icon({ icon_name: matchItem.isDirectory ? 'folder' : 'text-x-generic', icon_size: iconPx });
         } else {
-            icon = new St.Icon({ icon_name: 'application-x-executable', icon_size: 28 });
+            icon = new St.Icon({ icon_name: 'application-x-executable', icon_size: iconPx });
         }
 
         let textBox = new St.BoxLayout({
@@ -5030,6 +5600,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         if (this.showDescription && matchItem.description) {
             let descLbl = new St.Label({
                 text: matchItem.description,
+                min_width: 0,
                 style_class: 'win11-recent-item-subtitle'
             });
             descLbl.clutter_text.ellipsize = Pango.EllipsizeMode.END;
@@ -5084,18 +5655,31 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         if (!item)
             return;
 
+        const logicalScale = Math.max(1, (this._getPinnedMetrics().logicalScale || 1));
+        const appIconPx = Math.round(52 * logicalScale);
+        const fileIconPx = Math.round(48 * logicalScale);
+        const titleMaxH = Math.round(48 * logicalScale);
+        const descMaxH = Math.round(56 * logicalScale);
+
         let iconBin = new St.Bin({ x_align: St.Align.MIDDLE });
         if (item.kind === 'app') {
-            iconBin.set_child(createAppIcon(item.app, 52));
+            iconBin.set_child(createAppIcon(item.app, appIconPx));
         } else {
-            iconBin.set_child(new St.Icon({ icon_name: item.isDirectory ? 'folder' : 'text-x-generic', icon_size: 48 }));
+            iconBin.set_child(new St.Icon({ icon_name: item.isDirectory ? 'folder' : 'text-x-generic', icon_size: fileIconPx }));
         }
 
         let titleLbl = new St.Label({
             text: item.name,
+            min_width: 0,
+            x_expand: true,
             style_class: 'win11-search-preview-title'
         });
+        if (titleLbl.set_style)
+            titleLbl.set_style(`min-width: 0; max-height: ${titleMaxH}px;`);
         titleLbl.clutter_text.line_wrap = true;
+        if (Pango.WrapMode)
+            titleLbl.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
+        titleLbl.clutter_text.ellipsize = Pango.EllipsizeMode.END;
 
         this.searchPreviewPane.add_actor(iconBin);
         this.searchPreviewPane.add_actor(titleLbl);
@@ -5103,9 +5687,16 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         if (item.description) {
             let descLbl = new St.Label({
                 text: item.description,
+                min_width: 0,
+                x_expand: true,
                 style_class: 'win11-search-preview-desc'
             });
+            if (descLbl.set_style)
+                descLbl.set_style(`min-width: 0; max-height: ${descMaxH}px;`);
             descLbl.clutter_text.line_wrap = true;
+            if (Pango.WrapMode)
+                descLbl.clutter_text.line_wrap_mode = Pango.WrapMode.CHAR;
+            descLbl.clutter_text.ellipsize = Pango.EllipsizeMode.END;
             this.searchPreviewPane.add_actor(descLbl);
         }
 
@@ -5115,6 +5706,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         let actionsBox = new St.BoxLayout({
             vertical: true,
             style_class: 'win11-search-preview-actions',
+            min_width: 0,
             x_expand: true
         });
 
@@ -5122,6 +5714,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             let btn = new St.BoxLayout({
                 vertical: false,
                 style_class: 'win11-search-preview-action-btn',
+                min_width: 0,
                 reactive: true,
                 track_hover: true,
                 x_expand: true
@@ -5131,7 +5724,13 @@ class Win11MenuApplet extends Applet.TextIconApplet {
                 icon_size: 14,
                 icon_type: St.IconType.SYMBOLIC
             });
-            let lbl = new St.Label({ text: label, y_align: Clutter.ActorAlign.CENTER });
+            let lbl = new St.Label({
+                text: label,
+                min_width: 0,
+                x_expand: true,
+                y_align: Clutter.ActorAlign.CENTER
+            });
+            lbl.clutter_text.ellipsize = Pango.EllipsizeMode.END;
             btn.add_actor(ic);
             btn.add_actor(lbl);
             btn.connect('button-release-event', (actor, event) => {
@@ -5295,11 +5894,22 @@ class Win11MenuApplet extends Applet.TextIconApplet {
 
     _onOpenStateChanged(menu, open) {
         if (open) {
+            this._ensureStylesheetLoaded();
             this._syncMenuGeometry();
             this._updateThemeColors();
             this._switchToPopupMode(this._currentPopupMode || "start", this._currentPopupMode === "search");
             this._queueAllAppsMaterialize();
         } else {
+            if (this._isResizingMenu)
+                this._endMenuResize(true);
+            if (this._footerTooltips) {
+                for (const tip of this._footerTooltips) {
+                    try {
+                        if (tip && typeof tip.hide === 'function')
+                            tip.hide();
+                    } catch (e) {}
+                }
+            }
             this._cancelFileSearch();
             this.closeFloatingMenus();
             this._closeFolder();
@@ -5326,6 +5936,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
 
     destroy() {
         this._destroying = true;
+        this._destroyFooterTooltips();
         this._destroyRecentFiles();
         this._destroyFileSearch();
         if (this._geometrySignals) this._geometrySignals.disconnectAllSignals();

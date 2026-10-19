@@ -47,6 +47,8 @@ FIXTURE_KEYS = [
     ("search-button-spacing", "spinbutton", 0, 0),
     ("icon-size-mode", "generic", "standard", "standard"),
     ("menu-size", "combobox", "large", "large"),
+    ("custom-menu-width", "spinbutton", 796, 796),
+    ("custom-menu-height", "spinbutton", 750, 750),
     ("show-avatar", "switch", True, True),
     ("show-description", "switch", True, True),
     ("show-all-apps", "switch", False, False),
@@ -250,16 +252,20 @@ class WindowTestCase(TempDirsMixin, unittest.TestCase):
 
 class MenuSizeTest(WindowTestCase):
     def test_menu_size_labels_and_order_in_both_languages(self):
-        for language, title, labels in [("en", "Menu size", ["Small", "Medium", "Large"]),
-                                        ("ptbr", "Tamanho do menu", ["Pequeno", "Médio", "Grande"])]:
+        for language, title, labels in [
+            ("en", "Menu size", ["Small", "Medium", "Large", "Custom"]),
+            ("ptbr", "Tamanho do menu", ["Pequeno", "Médio", "Grande", "Personalizado"]),
+        ]:
             win = self.open_window(language=language)
             self.assertIn("menu-size", win.controls)
+            self.assertIn("custom-menu-width", win.controls)
+            self.assertIn("custom-menu-height", win.controls)
             self.assertNotIn("icon-size-mode", win.controls)
             combo = win.controls["menu-size"]
             self.assertEqual(combo.get_active_id(), "large")
             self.assertIn(title, visible_texts(win))
             self.assertEqual([row[0] for row in combo.get_model()], labels)
-            for size in ("small", "medium", "large"):
+            for size in ("small", "medium", "large", "custom"):
                 combo.set_active_id(size)
                 self.assertEqual(combo.get_active_id(), size)
 
@@ -272,6 +278,30 @@ class MenuSizeTest(WindowTestCase):
         expected["menu-size"]["value"] = "medium"
         self.assertEqual(self.read_config(), expected)
         self.assertTrue(os.path.exists(self.trigger()))
+
+    def test_live_drag_resize_updates_width_and_height_spinbuttons_without_feedback_write(self):
+        win = self.open_window(**{"menu-size": "custom", "custom-menu-width": 640, "custom-menu-height": 690})
+        self.settle(win)
+        if os.path.exists(self.trigger()):
+            os.remove(self.trigger())
+        live_path = os.path.join(self.cache, "live-size-" + INSTANCE + ".json")
+        os.makedirs(self.cache, exist_ok=True)
+        with open(live_path, "w", encoding="utf-8") as handle:
+            json.dump({
+                "width": 712,
+                "height": 664,
+                "minWidth": 557,
+                "maxWidth": 1024,
+                "minHeight": 630,
+                "maxHeight": 674,
+                "dragging": True,
+                "ts": 1000,
+            }, handle)
+        win._sync_live_size_from_cache(update_values=True)
+        self.settle(win)
+        self.assertEqual(int(win.controls["custom-menu-width"].get_value()), 712)
+        self.assertEqual(int(win.controls["custom-menu-height"].get_value()), 664)
+        self.assertFalse(os.path.exists(self.trigger()), "live drag sync must not trigger a feedback write")
 
 
 class StagedLanguageTest(WindowTestCase):
@@ -462,7 +492,7 @@ class SingleInstanceTest(TempDirsMixin, unittest.TestCase):
             self.assertIsNot(reopened, first, "a destroyed Gtk window reappears as a blank page")
             self.assertIsNotNone(reopened.get_child())
             self.assertEqual(reopened.stack.get_visible_child_name(), "layout")
-            self.assertEqual(len(reopened.controls), 29)
+            self.assertEqual(len(reopened.controls), 31)
             self.assertEqual(self.read_config()["menu-icon"]["value"], "cs-xlet-error")
 
     @unittest.skipUnless(Gtk.init_check()[0], "needs a display")
@@ -515,7 +545,7 @@ app = m.SettingsApplication(sys.argv[2], "layout", sys.argv[3], sys.argv[4])
 auxiliary = []; timed_out = []
 def close_main():
     assert app.window.get_child() is not None
-    assert len(app.window.controls) == 29
+    assert len(app.window.controls) == 31
     aux = m.Gtk.Window(application=app); auxiliary.append(aux)
     aux.hide()  # Reproduce an auxiliary window keeping the Gtk.Application alive.
     picker = app.window.controls["menu-icon"]
@@ -584,6 +614,17 @@ class SensitivityTest(WindowTestCase):
         win.controls["menu-icon-size-mode"].set_active_id("custom")
         self.assertTrue(self.active(win, "menu-icon-size"))
         self.assertTrue(self.open_window(**{"menu-icon-size-mode": "custom"}).controls["menu-icon-size"].is_sensitive())
+
+    def test_custom_menu_dimensions_only_in_custom_menu_size_mode(self):
+        win = self.open_window(**{"menu-size": "large"})
+        self.assertFalse(self.active(win, "custom-menu-width"))
+        self.assertFalse(self.active(win, "custom-menu-height"))
+        win.controls["menu-size"].set_active_id("custom")
+        self.assertTrue(self.active(win, "custom-menu-width"))
+        self.assertTrue(self.active(win, "custom-menu-height"))
+        win.controls["menu-size"].set_active_id("small")
+        self.assertFalse(self.active(win, "custom-menu-width"))
+        self.assertFalse(self.active(win, "custom-menu-height"))
 
     def test_search_height_controls_follow_display_and_size_mode(self):
         matrix = [("hidden", "auto", False, False), ("icon", "custom", False, False),
