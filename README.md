@@ -1,4 +1,4 @@
-# Win11-Like CInnamon Menu
+# Win11-Like Cinnamon Menu
 
 The applet keeps its original internal identifier, `win11-menu@cinnamon`, so existing installations and settings remain compatible.
 
