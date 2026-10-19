@@ -4039,18 +4039,20 @@ class Win11MenuApplet extends Applet.TextIconApplet {
                 previewSlot: isPinned ? source.index : this.pinnedItems.length,
                 folderTargetIndex: -1 };
         }
-        // Keep the hit-test snapshot until the pointer actually moves. A tile sliding
-        // underneath a stationary pointer must not turn an insertion into a merge.
-        if (this._pinnedHover && this._pinnedHover.source === source && !this._pinnedHover.target &&
-            Math.abs(x - this._pinnedHover.x) < 8 && Math.abs(y - this._pinnedHover.y) < 8)
+        // If pointer has not moved at all, keep the existing hover state
+        if (this._pinnedHover && this._pinnedHover.source === source &&
+            this._pinnedHover.x === x && this._pinnedHover.y === y)
             return DND.DragMotionResult.MOVE_DROP;
 
         const metrics = this._getPinnedMetrics();
         let canMerge = !isPinned || source.itemData.type === 'app';
+        const mergeInsetX = Math.max(4, Math.round(metrics.cellW * 0.10));
+        const mergeTop = 2;
+        const mergeBottom = metrics.cellH - 4;
         let target = canMerge ? this._pinnedTiles.find(t => t !== source &&
             !(isFolderApp && t.itemData.id === source.folderData.id) &&
-            x >= t.currentX + metrics.mergeInset && x <= t.currentX + metrics.cellW - metrics.mergeInset &&
-            y >= t.currentY + metrics.mergeTop && y <= t.currentY + metrics.mergeBottom) : null;
+            x >= t.currentX + mergeInsetX && x <= t.currentX + metrics.cellW - mergeInsetX &&
+            y >= t.currentY + mergeTop && y <= t.currentY + mergeBottom) : null;
         let col = Math.max(0, Math.min(metrics.cols - 1, Math.floor(x / metrics.cellW)));
         let row = Math.max(0, Math.floor(y / metrics.cellH));
         let slot = Math.max(0, Math.min(this._pinnedTiles.length - (isPinned ? 1 : 0), row * metrics.cols + col));
@@ -4066,13 +4068,14 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this._handlePinnedGridDragOut();
         const state = this._dragState;
         this._pinnedHover = { source, x, y, target, slot };
-        this._pinnedHoverTimer = Mainloop.timeout_add(target ? 160 : 75, () => {
+        this._pinnedHoverTimer = Mainloop.timeout_add(target ? 300 : 75, () => {
             this._pinnedHoverTimer = 0;
             if (this._dragState !== state) return false;
             if (target) {
                 state.folderTargetIndex = target.index;
                 this._externalFolderTargetIndex = target.index;
                 this._pinnedTiles.forEach(t => t.setFolderDropTarget(t === target));
+                this._animatePinnedAutoArrange(state.sourceIndex, state.sourceIndex);
             } else {
                 state.previewSlot = slot;
                 this._animatePinnedAutoArrange(state.sourceIndex, slot);
