@@ -250,6 +250,129 @@ function createAppIcon(app, size) {
     return icon;
 }
 
+const TooltipParent = (Tooltips && typeof Tooltips.Tooltip === 'function')
+    ? Tooltips.Tooltip
+    : class {
+        constructor(actor, text) {
+            this.item = actor;
+            this._tooltip = {
+                get_text: () => text || "",
+                is_finalized: () => false,
+                get_preferred_width: () => [0, 0],
+                get_preferred_height: () => [0, 0],
+                set_position: () => {},
+                show: () => {},
+                hide: () => {},
+                raise_top: () => {},
+                destroy: () => {}
+            };
+        }
+        destroy() {}
+        hide() {}
+        show() {}
+    };
+
+/**
+ * Custom Tooltip that positions itself directly above the target actor.
+ * When checkLabel is provided, it only displays when the text in checkLabel is cut off with ellipsis.
+ */
+class Win11AboveTooltip extends TooltipParent {
+    constructor(actor, text, checkLabel = null) {
+        super(actor, text);
+        this._checkLabel = checkLabel;
+    }
+
+    _isTextCutOff() {
+        if (!this._checkLabel)
+            return true;
+        let label = this._checkLabel;
+        if (!label)
+            return false;
+        let text = label.get_text ? label.get_text() : "";
+        if (!text || text.trim() === "")
+            return false;
+        let ct = label.clutter_text;
+        if (!ct)
+            return false;
+
+        let layout = ct.get_layout ? ct.get_layout() : null;
+        if (layout && layout.is_ellipsized && layout.is_ellipsized())
+            return true;
+
+        let allocW = label.get_width();
+        if (allocW <= 0 && label.get_allocation_box) {
+            let box = label.get_allocation_box();
+            allocW = box ? (box.x2 - box.x1) : 0;
+        }
+        if (allocW <= 0 && label.get_transformed_size) {
+            allocW = label.get_transformed_size()[0];
+        }
+
+        // Vertical overflow (for multi-line wrapped labels like pinned tiles):
+        if (ct.line_wrap) {
+            let [minH, natH] = ct.get_preferred_height(allocW > 0 ? allocW : -1);
+            let allocH = label.get_height();
+            if (allocH <= 0 && label.get_allocation_box) {
+                let box = label.get_allocation_box();
+                allocH = box ? (box.y2 - box.y1) : 0;
+            }
+            if (allocH <= 0 && label.get_transformed_size) {
+                allocH = label.get_transformed_size()[1];
+            }
+            if (allocH > 0 && Math.round(natH) > Math.round(allocH) + 2)
+                return true;
+            return false;
+        }
+
+        // Horizontal overflow / truncation for single-line labels:
+        let [minW, natW] = ct.get_preferred_width(-1);
+        if (allocW > 0 && Math.round(natW) > Math.round(allocW) + 2)
+            return true;
+
+        return false;
+    }
+
+    show() {
+        if (!this._tooltip || (this._tooltip.is_finalized && this._tooltip.is_finalized()))
+            return;
+        if (this._tooltip.get_text() === "" || !this.mousePosition)
+            return;
+        if (DND && typeof DND.isDragging === 'function' && DND.isDragging())
+            return;
+
+        if (!this._isTextCutOff())
+            return;
+
+        let [minW, natW] = this._tooltip.get_preferred_width(-1);
+        let [minH, natH] = this._tooltip.get_preferred_height(natW);
+        let tipW = Math.max(minW, natW);
+        let tipH = Math.max(minH, natH);
+
+        let monitor = (Main.layoutManager && Main.layoutManager.findMonitorForActor)
+            ? (Main.layoutManager.findMonitorForActor(this.item) || Main.layoutManager.primaryMonitor)
+            : { x: 0, y: 0, width: 1920, height: 1080 };
+
+        let itemX = 0, itemY = 0, itemW = 0, itemH = 0;
+        if (this.item && this.item.get_transformed_position) {
+            [itemX, itemY] = this.item.get_transformed_position();
+            [itemW, itemH] = this.item.get_transformed_size();
+        }
+
+        let tooltipLeft = Math.round(itemX + (itemW - tipW) / 2);
+        tooltipLeft = Math.max(monitor.x + 6, Math.min(tooltipLeft, monitor.x + monitor.width - tipW - 6));
+
+        let tooltipTop = Math.round(itemY - tipH - 6);
+        if (tooltipTop < monitor.y + 6)
+            tooltipTop = Math.round(itemY + itemH + 6);
+
+        this._tooltip.set_position(tooltipLeft, tooltipTop);
+        this._tooltip.show();
+        if (this._tooltip.raise_top)
+            this._tooltip.raise_top();
+        this.visible = true;
+    }
+}
+
 /**
  * Draggable tile in the Pinned section (represents either a single App or a Folder of apps)
  */
@@ -318,6 +441,7 @@ class PinnedTile {
 
         this.actor.add_actor(this.iconContainer);
         this.actor.add_actor(this.label);
+        this.applet._attachEllipsisTooltip(this.actor, titleText, this.label);
 
         this._signals.connect(this.actor, 'button-release-event', this._onButtonRelease.bind(this));
 
@@ -505,6 +629,7 @@ class FolderAppTile {
 
         this.actor.add_actor(this.iconContainer);
         this.actor.add_actor(this.label);
+        this.applet._attachEllipsisTooltip(this.actor, this.app ? this.app.get_name() : appId, this.label);
 
         this._signals.connect(this.actor, 'button-release-event', this._onButtonRelease.bind(this));
 
@@ -1379,7 +1504,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
 
     on_applet_removed_from_panel() {
         this._destroying = true;
-        this._destroyFooterTooltips();
+        this._destroyAllTooltips();
         this._destroyRecentFiles();
         this._destroyFileSearch();
         if (this._geometrySignals) this._geometrySignals.disconnectAllSignals();
@@ -2725,25 +2850,72 @@ class Win11MenuApplet extends Applet.TextIconApplet {
                     if (tip && typeof tip.destroy === 'function')
                         tip.destroy();
                 } catch (e) {}
+                if (this._activeTooltips)
+                    this._activeTooltips.delete(tip);
             }
         }
         this._footerTooltips = [];
     }
 
-    _attachFooterTooltip(actor, text) {
+    _destroyAllTooltips() {
+        this._destroyFooterTooltips();
+        if (this._activeTooltips) {
+            for (const tip of this._activeTooltips) {
+                try {
+                    if (tip && typeof tip.hide === 'function')
+                        tip.hide();
+                    if (tip && typeof tip.destroy === 'function')
+                        tip.destroy();
+                } catch (e) {}
+            }
+            this._activeTooltips.clear();
+        }
+    }
+
+    _attachAboveTooltip(actor, text, checkLabel = null) {
         if (!actor || !text)
             return null;
-        if (!this._footerTooltips)
-            this._footerTooltips = [];
-        if (Tooltips && typeof Tooltips.Tooltip === 'function') {
-            try {
-                const tip = new Tooltips.Tooltip(actor, text);
-                actor._tooltip = tip;
-                this._footerTooltips.push(tip);
-                return tip;
-            } catch (e) {}
+        if (!this._activeTooltips)
+            this._activeTooltips = new Set();
+        try {
+            const tip = new Win11AboveTooltip(actor, text, checkLabel);
+            actor._win11Tooltip = tip;
+            this._activeTooltips.add(tip);
+            actor.connect('destroy', () => {
+                if (this._activeTooltips)
+                    this._activeTooltips.delete(tip);
+            });
+            return tip;
+        } catch (e) {
+            return null;
         }
-        return null;
+    }
+
+    _attachFooterTooltip(actor, text) {
+        const tip = this._attachAboveTooltip(actor, text, null);
+        if (tip) {
+            if (!this._footerTooltips)
+                this._footerTooltips = [];
+            this._footerTooltips.push(tip);
+        }
+        return tip;
+    }
+
+    _attachEllipsisTooltip(actor, text, checkLabel) {
+        return this._attachAboveTooltip(actor, text, checkLabel);
+    }
+
+    _hideAllTooltips() {
+        if (this._footerTooltips) {
+            for (const tip of this._footerTooltips) {
+                try { if (tip && typeof tip.hide === 'function') tip.hide(); } catch (e) {}
+            }
+        }
+        if (this._activeTooltips) {
+            for (const tip of this._activeTooltips) {
+                try { if (tip && typeof tip.hide === 'function') tip.hide(); } catch (e) {}
+            }
+        }
     }
 
     _refreshFooter() {
@@ -4375,6 +4547,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
 
         btn.add_actor(icon);
         btn.add(textBox, { expand: true, x_fill: true, y_align: St.Align.MIDDLE });
+        this._attachEllipsisTooltip(btn, item.title, titleLbl);
 
         if (showRightTimestamp && item.timeText) {
             let timeLbl = new St.Label({
@@ -4593,6 +4766,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
         cell.add_actor(tile);
         cell.add_actor(label);
+        this._attachEllipsisTooltip(cell, category.name, label);
         return cell;
     }
 
@@ -4846,6 +5020,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         lbl.clutter_text.ellipsize = Pango.EllipsizeMode.END;
         box.add_actor(iconBin);
         box.add_actor(lbl);
+        this._attachEllipsisTooltip(box, app.get_name(), lbl);
 
         box.connect('button-release-event', (actor, event) => {
             if (event.get_button() === Clutter.BUTTON_PRIMARY) {
@@ -4896,6 +5071,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
 
         row.add_actor(icon);
         row.add(labelBox, { expand: true, x_fill: true, y_align: St.Align.MIDDLE });
+        this._attachEllipsisTooltip(row, app.get_name(), nameLbl);
 
         row._delegate = {
             app: app,
@@ -5016,6 +5192,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             lbl.clutter_text.ellipsize = Pango.EllipsizeMode.END;
             row.add_actor(icon);
             row.add(lbl, { expand: true, x_fill: true, y_align: St.Align.MIDDLE });
+            this._attachEllipsisTooltip(row, item.title, lbl);
 
             row.connect('button-release-event', (actor, event) => {
                 if (event.get_button() === Clutter.BUTTON_PRIMARY) {
@@ -5068,6 +5245,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
                     chip.set_style(`max-width: ${sm.quickChipMaxW}px;`);
                 if (chip.child && chip.child.clutter_text)
                     chip.child.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+                this._attachEllipsisTooltip(chip, qs.label, chip.child);
                 chip.connect('clicked', () => {
                     this.menu.close();
                     qs.action();
@@ -5114,6 +5292,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
                 lbl.clutter_text.ellipsize = Pango.EllipsizeMode.END;
                 card.add_actor(icon);
                 card.add_actor(lbl);
+                this._attachEllipsisTooltip(card, app.get_name(), lbl);
 
                 card.connect('button-release-event', (actor, event) => {
                     if (event.get_button() === Clutter.BUTTON_PRIMARY) {
@@ -5609,6 +5788,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
 
         row.add_actor(icon);
         row.add(textBox, { expand: true, x_fill: true, y_align: St.Align.MIDDLE });
+        this._attachEllipsisTooltip(row, matchItem.name, nameLbl);
 
         row.connect('enter-event', () => {
             if (!this._destroying) this._selectSearchResult(this._searchResultsList.indexOf(matchItem));
@@ -5733,6 +5913,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             lbl.clutter_text.ellipsize = Pango.EllipsizeMode.END;
             btn.add_actor(ic);
             btn.add_actor(lbl);
+            this._attachEllipsisTooltip(btn, label, lbl);
             btn.connect('button-release-event', (actor, event) => {
                 if (event.get_button() === Clutter.BUTTON_PRIMARY) {
                     callback();
@@ -5902,14 +6083,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         } else {
             if (this._isResizingMenu)
                 this._endMenuResize(true);
-            if (this._footerTooltips) {
-                for (const tip of this._footerTooltips) {
-                    try {
-                        if (tip && typeof tip.hide === 'function')
-                            tip.hide();
-                    } catch (e) {}
-                }
-            }
+            this._hideAllTooltips();
             this._cancelFileSearch();
             this.closeFloatingMenus();
             this._closeFolder();
@@ -5936,7 +6110,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
 
     destroy() {
         this._destroying = true;
-        this._destroyFooterTooltips();
+        this._destroyAllTooltips();
         this._destroyRecentFiles();
         this._destroyFileSearch();
         if (this._geometrySignals) this._geometrySignals.disconnectAllSignals();
