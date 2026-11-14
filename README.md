@@ -19,6 +19,7 @@ A modern desktop applet for the **Cinnamon Desktop Environment** (Linux Mint and
   - **Taskbar search**: hidden, icon only, icon + label, or a real *search box* (about 4.9x the panel thickness wide). The box is inactive until clicked; the text typed in it and in the menu's search field mirror each other.
   - **All apps view**: *List*, *Grid* or *Category* (tiles with a 2×2 preview of each system menu category; click a preview icon to launch it, click the tile to open the category). Pick it from the *View:* dropdown.
   - **Sections**: *All*, recently launched apps and recent files can be shown or hidden independently (*Layout options → Recent* / *All*). Recent files use actual file history and respect Cinnamon's system privacy setting without changing your applet switch.
+  - **Truncation tooltips**: text that does not fit is shown in full on hover, only when it is actually cut off with an ellipsis — app names (pinned apps, folders, All apps, recents, search), and also the description or full path under a name in search results and recent files. Hover the description line to read the description; long text wraps at about 420 px (names that are too long wrap too), and tooltips are not shown while dragging. In recent files, the right-hand timestamp layout (Show all) shows the app description or the file path under each name, and both get the same tooltip.
 
 - **Pinned Applications (6 / 7 / 8 columns in Small / Medium / Large)**:
   - **Drag and Drop**: Reorder pinned apps with smooth auto-arranging animations.

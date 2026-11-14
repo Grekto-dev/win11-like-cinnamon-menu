@@ -272,22 +272,82 @@ const TooltipParent = (Tooltips && typeof Tooltips.Tooltip === 'function')
         show() {}
     };
 
+// Longest line of a truncation tooltip, in logical pixels; longer text wraps.
+const TOOLTIP_MAX_WIDTH = 420;
+
 /**
  * Custom Tooltip that positions itself directly above the target actor.
  * When checkLabel is provided, it only displays when the text in checkLabel is cut off with ellipsis.
+ * `extras` ([{label, text}]) register secondary labels (descriptions, paths) of the same actor: while
+ * the pointer rests on one of them and it is truncated, the tooltip shows that label's full text.
  */
 class Win11AboveTooltip extends TooltipParent {
-    constructor(actor, text, checkLabel = null) {
+    constructor(actor, text, checkLabel = null, extras = []) {
         super(actor, text);
         this._checkLabel = checkLabel;
+        this._primaryText = text;
+        this._extras = Array.isArray(extras) ? extras.filter(e => e && e.label && e.text) : [];
+        this._shownRegion = null;
     }
 
-    _isTextCutOff() {
-        if (!this._checkLabel)
-            return true;
-        let label = this._checkLabel;
+    // The registered secondary label under `position`, or null for the primary (name) area.
+    _regionAt(position) {
+        if (!position)
+            return null;
+        const [x, y] = position;
+        for (const extra of this._extras) {
+            const label = extra.label;
+            if (!label || !label.get_transformed_position)
+                continue;
+            const [lx, ly] = label.get_transformed_position();
+            const [lw, lh] = label.get_transformed_size();
+            if (x >= lx && x < lx + lw && y >= ly && y < ly + lh)
+                return extra;
+        }
+        return null;
+    }
+
+    // The secondary label under `position` that actually deserves its own tooltip (it is truncated);
+    // null means the primary (name) text applies. Used by both the picker and the motion handler so
+    // they always agree on what is being shown.
+    _effectiveRegion(position) {
+        const region = this._regionAt(position);
+        return region && this._isTextCutOff(region.label) ? region : null;
+    }
+
+    // What to show for the current pointer position: a truncated secondary label it rests on,
+    // otherwise the primary text when it is truncated, otherwise nothing.
+    _pickTarget() {
+        const region = this._effectiveRegion(this.mousePosition);
+        if (region)
+            return {text: region.text, region};
+        if (this._isTextCutOff())
+            return {text: this._primaryText, region: null};
+        return null;
+    }
+
+    _onMotionEvent(actor, event) {
+        // Pointer crossed from one label to another while a tooltip is visible: drop the old text
+        // and let the base class arm the show timer again for the new position.
+        if (this.visible && this._extras.length && this._effectiveRegion(this._roundedMousePosition(event)) !== this._shownRegion)
+            this._hide();
+        super._onMotionEvent(actor, event);
+    }
+
+    _applyWrapping() {
+        const tip = this._tooltip;
+        if (tip.set_style)
+            tip.set_style(`max-width: ${TOOLTIP_MAX_WIDTH}px;`);
+        if (tip.clutter_text) {
+            tip.clutter_text.line_wrap = true;
+            if (Pango.WrapMode)
+                tip.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
+        }
+    }
+
+    _isTextCutOff(label = this._checkLabel) {
         if (!label)
-            return false;
+            return true;
         let text = label.get_text ? label.get_text() : "";
         if (!text || text.trim() === "")
             return false;
@@ -340,8 +400,16 @@ class Win11AboveTooltip extends TooltipParent {
         if (DND && typeof DND.isDragging === 'function' && DND.isDragging())
             return;
 
-        if (!this._isTextCutOff())
+        const target = this._pickTarget();
+        if (!target)
             return;
+        this._shownRegion = target.region;
+        if (this._tooltip.set_text)
+            this._tooltip.set_text(target.text);
+        // Full names and paths are shown literally, never interpreted as Pango markup.
+        if (this._tooltip.clutter_text && this._tooltip.clutter_text.set_use_markup)
+            this._tooltip.clutter_text.set_use_markup(false);
+        this._applyWrapping();
 
         let [minW, natW] = this._tooltip.get_preferred_width(-1);
         let [minH, natH] = this._tooltip.get_preferred_height(natW);
@@ -3140,13 +3208,13 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         }
     }
 
-    _attachAboveTooltip(actor, text, checkLabel = null) {
+    _attachAboveTooltip(actor, text, checkLabel = null, extras = []) {
         if (!actor || !text)
             return null;
         if (!this._activeTooltips)
             this._activeTooltips = new Set();
         try {
-            const tip = new Win11AboveTooltip(actor, text, checkLabel);
+            const tip = new Win11AboveTooltip(actor, text, checkLabel, extras);
             actor._win11Tooltip = tip;
             this._activeTooltips.add(tip);
             actor.connect('destroy', () => {
@@ -3169,8 +3237,8 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         return tip;
     }
 
-    _attachEllipsisTooltip(actor, text, checkLabel) {
-        return this._attachAboveTooltip(actor, text, checkLabel);
+    _attachEllipsisTooltip(actor, text, checkLabel, extras = []) {
+        return this._attachAboveTooltip(actor, text, checkLabel, extras);
     }
 
     _hideAllTooltips() {
@@ -4820,7 +4888,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
 
         btn.add_actor(icon);
         btn.add(textBox, { expand: true, x_fill: true, y_align: St.Align.MIDDLE });
-        this._attachEllipsisTooltip(btn, item.title, titleLbl);
+        this._attachEllipsisTooltip(btn, item.title, titleLbl, [{label: subLbl, text: subText}]);
 
         if (showRightTimestamp && item.timeText) {
             let timeLbl = new St.Label({
@@ -6050,8 +6118,9 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         nameLbl.clutter_text.ellipsize = Pango.EllipsizeMode.END;
         textBox.add_actor(nameLbl);
 
+        let descLbl = null;
         if (this.showDescription && matchItem.description) {
-            let descLbl = new St.Label({
+            descLbl = new St.Label({
                 text: matchItem.description,
                 min_width: 0,
                 style_class: 'win11-recent-item-subtitle'
@@ -6062,7 +6131,8 @@ class Win11MenuApplet extends Applet.TextIconApplet {
 
         row.add_actor(icon);
         row.add(textBox, { expand: true, x_fill: true, y_align: St.Align.MIDDLE });
-        this._attachEllipsisTooltip(row, matchItem.name, nameLbl);
+        this._attachEllipsisTooltip(row, matchItem.name, nameLbl,
+            descLbl ? [{label: descLbl, text: matchItem.description}] : []);
 
         row.connect('enter-event', () => {
             if (!this._destroying) this._selectSearchResult(this._searchResultsList.indexOf(matchItem));
