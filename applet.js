@@ -927,6 +927,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this.settings.bind("settings-version", "settingsVersion", null);
         this.settings.bind("search-button-size-mode", "searchButtonSizeMode", () => this._updateSearchPanelButton());
         this.settings.bind("search-pill-height", "searchPillHeight", () => this._updateSearchPanelButton());
+        this.settings.bind("search-custom-width", "searchCustomWidth", () => this._updateSearchPanelButton());
         this.settings.bind("search-button-spacing", "searchButtonSpacing", () => this._updateSearchPanelButton());
 
         this.settings.bind("overlay-key", "overlayKey", () => this._updateKeybinding());
@@ -1424,7 +1425,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         const widthStyle = panelWidth > 0 ? ` width: ${panelWidth / (global.ui_scale || 1)}px;` : '';
         this.actor.set_style(`spacing: ${spacing}px; padding-${trailingEdge}: ${spacing}px;${widthStyle}`);
         // Exchange horizontal theme padding for margin: inset the painted Start
-        // button by 5 logical px without moving its icon, Search or the next applet.
+        // button by 2 logical px, retaining a small margin around the wider highlight.
         if (this.startButtonBox) {
             this.startButtonBox.set_style(vertical ? 'padding: 0;' : null);
             if (!vertical && this.startButtonBox.get_stage()) {
@@ -1433,7 +1434,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
                 const style = [[St.Side.LEFT, 'left'], [St.Side.RIGHT, 'right']].map(([side, name]) => {
                     const padding = node.get_padding(side) / scale;
                     const margin = node.get_margin(side) / scale;
-                    const inset = Math.min(5, Math.max(0, padding));
+                    const inset = Math.min(2, Math.max(0, padding));
                     return `padding-${name}: ${padding - inset}px; margin-${name}: ${margin + inset}px;`;
                 }).join(' ');
                 this.startButtonBox.set_style(style);
@@ -1449,6 +1450,14 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this.searchPanelEntry.set_hint_text(this.t("search"));
 
         let ph = this._panelHeight || (this.panel ? this.panel.height : 40);
+        const custom = this.searchButtonSizeMode === "custom";
+        const scale = custom ? (global.ui_scale || 1) : 1;
+        const customHeight = Math.min(ph, Math.max(20, Math.min(64, Number(this.searchPillHeight) || 30)) * scale);
+        const requestedWidth = Number(this.searchCustomWidth);
+        const customWidth = custom && Number.isFinite(requestedWidth)
+            ? Math.max(0, Math.min(800, requestedWidth)) * scale : 0;
+        this.searchPanelButton.set_style(null);
+        this.searchPanelButton.clip_to_allocation = customWidth > 0 && mode !== "icon";
 
         if (mode === "icon") {
             this._clearVerticalSearchLabel();
@@ -1456,12 +1465,16 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             this.searchPanelButton.set_style_class_name('win11-search-panel-icon-btn grouped-window-list-item-box');
             this.searchPanelLabel.hide();
             this.searchPanelEntry.hide();
-            this.searchPanelButton.set_width(-1);
-            this.searchPanelButton.set_height(-1);
-            this.searchPanelButton.set_y_align(Clutter.ActorAlign.FILL);
+            this.searchPanelButton.set_width(custom ? customHeight : -1);
+            this.searchPanelButton.set_height(custom ? customHeight : -1);
+            this.searchPanelButton.set_y_align(custom ? Clutter.ActorAlign.CENTER : Clutter.ActorAlign.FILL);
+            this.searchPanelButton.set_x_align(Clutter.ActorAlign.CENTER);
 
             let iconSize;
-            if (this.menuIconSizeMode === "custom") {
+            if (custom) {
+                const logicalHeight = customHeight / scale;
+                iconSize = Math.max(1, Math.min(logicalHeight - 6, Math.round(logicalHeight * 0.75)));
+            } else if (this.menuIconSizeMode === "custom") {
                 iconSize = Math.min(this.menuIconSize || 32, ph);
             } else {
                 iconSize = Math.max(16, Math.min(ph - 6, Math.round(ph * 0.8)));
@@ -1486,8 +1499,8 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             }
 
             let pillH;
-            if (this.searchButtonSizeMode === "custom") {
-                pillH = Math.max(20, Math.min(ph, this.searchPillHeight || 30));
+            if (custom) {
+                pillH = customHeight;
             } else {
                 // Auto: scale to ~75% of panel height (e.g. 30px on 40px panel)
                 pillH = Math.max(24, Math.min(ph - 6, Math.round(ph * 0.75)));
@@ -1500,16 +1513,17 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             if (vertical) {
                 // The pill thickness is its width and the length follows its content.
                 this.searchPanelButton.set_width(pillH);
-                this.searchPanelButton.set_height(-1);
+                this.searchPanelButton.set_height(customWidth > 0 ? customWidth : -1);
                 this.searchPanelButton.set_x_align(Clutter.ActorAlign.CENTER);
             } else {
                 this.searchPanelButton.set_height(pillH);
                 // The field is as wide as the Windows 11 taskbar search box: ~4.9x the taskbar thickness.
-                this.searchPanelButton.set_width(mode === "box" ? Math.round(ph * 4.9) : -1);
+                this.searchPanelButton.set_width(customWidth > 0 ? customWidth : mode === "box" ? Math.round(ph * 4.9) : -1);
                 this.searchPanelButton.set_y_align(Clutter.ActorAlign.CENTER);
             }
 
-            let searchIconSize = Math.max(14, Math.min(pillH - 8, Math.round(pillH * 0.54)));
+            const logicalHeight = custom ? pillH / scale : pillH;
+            let searchIconSize = Math.max(14, Math.min(logicalHeight - 8, Math.round(logicalHeight * 0.54)));
             this.searchPanelIcon.set_style(null);
             this.searchPanelIcon.set_icon_size(searchIconSize);
         }
@@ -1624,7 +1638,9 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             this.searchPanelIcon.set_style("color: #ffffff;");
             this.searchPanelLabel.set_style("color: #ffffff;");
         } else {
-            this.searchPanelButton.set_style(null);
+            // Retain custom icon geometry during open/close updates; Auto uses the theme.
+            const customIcon = this._searchMode() === "icon" && this.searchButtonSizeMode === "custom";
+            this.searchPanelButton.set_style(customIcon ? 'padding: 0; margin: 0; min-width: 0; min-height: 0;' : null);
             this.searchPanelIcon.set_style(null);
             this.searchPanelLabel.set_style(null);
         }

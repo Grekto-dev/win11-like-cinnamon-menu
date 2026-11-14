@@ -110,7 +110,7 @@ test('vertical: the letter column and icon are centred across the bar', () => {
     horizontal.app._updateSearchPanelButton();
     assert.deepEqual(h, [0], 'Clutter.ActorAlign.FILL again in a horizontal bar');
 });
-test('Start highlight shrinks by 5px per side without moving the icon or Search', () => {
+test('Start highlight expands horizontally while retaining a small 2px margin and stable neighbours', () => {
     const {app} = searchHarness(SIDE.BOTTOM, 'pill');
     let style;
     app.startButtonBox = {set_style: s => {style = s;}, get_stage: () => ({}), get_theme_node: () => ({
@@ -118,10 +118,10 @@ test('Start highlight shrinks by 5px per side without moving the icon or Search'
     })};
     app._updateSearchPanelButton();
     const css = Object.fromEntries((style || '').split(';').filter(s => s.trim()).map(s => s.split(':').map(v => v.trim())));
-    assert.equal(css['padding-left'], '3px');
-    assert.equal(css['padding-right'], '3px');
-    assert.equal(css['margin-left'], '5px');
-    assert.equal(css['margin-right'], '5px');
+    assert.equal(css['padding-left'], '6px');
+    assert.equal(css['padding-right'], '6px');
+    assert.equal(css['margin-left'], '2px');
+    assert.equal(css['margin-right'], '2px');
     assert.equal(parseFloat(css['padding-left']) + parseFloat(css['margin-left']), 8);
     assert.equal(parseFloat(css['padding-right']) + parseFloat(css['margin-right']), 8);
     assert.doesNotMatch(style, /(?:^|;)\s*(?:width|height|padding-top|padding-bottom|margin-top|margin-bottom):/);
@@ -140,7 +140,7 @@ test('Start inset preserves asymmetric theme geometry, RTL, HiDPI and repeated u
             }};
             for (let repeat = 0; repeat < 3; repeat++) {
                 app._updateSearchPanelButton();
-                assert.equal(style, 'padding-left: 3px; margin-left: 7px; padding-right: 1px; margin-right: 9px;');
+                assert.equal(style, 'padding-left: 6px; margin-left: 4px; padding-right: 4px; margin-right: 6px;');
             }
         }
     }
@@ -176,7 +176,7 @@ test('vertical controls use the actual panel width, without Start padding wideni
     app._orientation = SIDE.BOTTOM;
     app._updateSearchPanelButton();
     assert.doesNotMatch(rootStyle, /width:/);
-    assert.match(styles.at(-1), /padding-left: 3px; margin-left: 5px;/, 'horizontal inset restored');
+    assert.match(styles.at(-1), /padding-left: 6px; margin-left: 2px;/, 'horizontal inset restored');
 });
 test('vertical bars keep the extra Search gaps vertical: spacing between children and padding below, nothing sideways', () => {
     const calls = [];
@@ -214,6 +214,167 @@ test('the search box still works in a horizontal panel', () => {
     app._updateSearchPanelButton();
     assert.equal(app.searchPanelEntry.visible, true);
     assert.equal(app.searchPanelButton.width, Math.round(48 * 4.9));
+});
+
+test('custom Search icon size is independent of the Start icon size', () => {
+    const {app} = searchHarness(SIDE.BOTTOM, 'icon', {
+        searchButtonSizeMode: 'custom', searchPillHeight: 32, menuIconSizeMode: 'custom', menuIconSize: 44
+    });
+    app._updateSearchPanelButton();
+    assert.equal(app.searchPanelButton.width, 32);
+    assert.equal(app.searchPanelButton.height, 32);
+    assert.equal(app.searchPanelIcon.iconSize, 24);
+    app.searchButtonSizeMode = 'auto';
+    app._updateSearchPanelButton();
+    assert.equal(app.searchPanelButton.width, -1);
+    assert.equal(app.searchPanelButton.height, -1);
+    assert.equal(app.searchPanelIcon.iconSize, 44);
+});
+
+// Exercise both real render and active-state methods: the layout-only harness
+// deliberately stubs the latter and cannot catch inline-style replacement bugs.
+function searchStyleHarness(orientation, mode, extra = {}, uiScale = 1) {
+    const {app} = searchHarness(orientation, mode, extra, uiScale);
+    delete app._updatePanelButtonsActiveState;
+    app.menu = {isOpen: false};
+    app._themeAccentCss = '#123456';
+    app.startButtonBox = {set_style() {}, get_stage: () => null};
+    for (const actor of [app.actor, app.startButtonBox, app.searchPanelButton]) {
+        actor.pseudo = {};
+        actor.change_style_pseudo_class = (name, value) => actor.pseudo[name] = value;
+    }
+    for (const actor of [app.searchPanelButton, app.searchPanelIcon, app.searchPanelLabel])
+        actor.set_style = style => actor.style = style;
+    return app;
+}
+
+test('Search style lifecycle: custom icon geometry survives rendering and active-only open/close; Auto clears it', () => {
+    const geometry = 'padding: 0; margin: 0; min-width: 0; min-height: 0;';
+    for (const orientation of Object.values(SIDE)) {
+        for (const scale of [1, 2]) {
+            const app = searchStyleHarness(orientation, 'icon', {
+                searchButtonSizeMode: 'custom', searchPillHeight: 32, _panelHeight: 48 * scale
+            }, scale);
+            for (const initialMode of ['closed', 'search', 'start']) {
+                app.menu.isOpen = initialMode !== 'closed';
+                app._currentPopupMode = initialMode;
+                app._updateSearchPanelButton();
+                assert.equal(app.searchPanelButton.style, geometry, `render: ${initialMode}, side ${orientation}, scale ${scale}`);
+                for (const popupMode of ['search', 'closed', 'start', 'closed']) {
+                    app.menu.isOpen = popupMode !== 'closed';
+                    app._currentPopupMode = popupMode;
+                    app._updatePanelButtonsActiveState();
+                    assert.equal(app.searchPanelButton.style, geometry, `active only: ${popupMode}`);
+                    assert.equal(app.searchPanelButton.width, 32 * scale);
+                    assert.equal(app.searchPanelButton.height, 32 * scale);
+                    assert.equal(app.searchPanelIcon.style, null);
+                    assert.equal(app.searchPanelButton.pseudo.checked, popupMode === 'search');
+                    assert.equal(app.startButtonBox.pseudo.checked, popupMode === 'start');
+                }
+            }
+            app.searchButtonSizeMode = 'auto';
+            app._updateSearchPanelButton();
+            assert.equal(app.searchPanelButton.width, -1);
+            assert.equal(app.searchPanelButton.height, -1);
+            for (const popupMode of ['search', 'closed', 'start', 'closed']) {
+                app.menu.isOpen = popupMode !== 'closed';
+                app._currentPopupMode = popupMode;
+                app._updatePanelButtonsActiveState();
+                assert.equal(app.searchPanelButton.style, null, 'Auto restores theme geometry');
+            }
+        }
+    }
+});
+
+test('Search style lifecycle: leaving custom icon mode preserves pill accent colors and clears old geometry', () => {
+    for (const sizeMode of ['custom', 'auto']) {
+        const app = searchStyleHarness(SIDE.BOTTOM, 'icon', {searchButtonSizeMode: 'custom', searchPillHeight: 32});
+        app._updateSearchPanelButton();
+        app.searchDisplay = 'pill';
+        app.searchButtonSizeMode = sizeMode;
+        app.menu.isOpen = true;
+        app._currentPopupMode = 'search';
+        app._updateSearchPanelButton();
+        const accent = 'background-color: #123456; border-color: #123456; color: #ffffff;';
+        assert.equal(app.searchPanelButton.style, accent);
+        for (const popupMode of ['closed', 'start', 'search', 'closed']) {
+            app.menu.isOpen = popupMode !== 'closed';
+            app._currentPopupMode = popupMode;
+            app._updatePanelButtonsActiveState();
+            assert.equal(app.searchPanelButton.style, popupMode === 'search' ? accent : null);
+            assert.equal(app.searchPanelIcon.style, popupMode === 'search' ? 'color: #ffffff;' : null);
+            assert.equal(app.searchPanelLabel.style, popupMode === 'search' ? 'color: #ffffff;' : null);
+        }
+    }
+});
+
+test('custom width applies to both the Search button and search bar, Auto restores their original width', () => {
+    for (const mode of ['pill', 'box']) {
+        const {app} = searchHarness(SIDE.BOTTOM, mode, {searchButtonSizeMode: 'custom', searchPillHeight: 34, searchCustomWidth: 250});
+        app._updateSearchPanelButton();
+        assert.equal(app.searchPanelButton.width, 250);
+        assert.equal(app.searchPanelButton.height, 34);
+        app.searchButtonSizeMode = 'auto';
+        app._updateSearchPanelButton();
+        assert.equal(app.searchPanelButton.width, mode === 'box' ? Math.round(48 * 4.9) : -1);
+        assert.equal(app.searchPanelButton.height, 36);
+    }
+});
+
+test('the custom-width settings binding immediately redraws Search', () => {
+    const line = source.split('\n').find(line => line.includes('this.settings.bind("search-custom-width"'));
+    assert.ok(line, 'the renderer must bind the persisted width');
+    const {app} = searchHarness(SIDE.BOTTOM, 'box');
+    let renders = 0;
+    app._updateSearchPanelButton = () => renders++;
+    app.settings = {bind(key, property, callback) {assert.equal(key, 'search-custom-width');assert.equal(property, 'searchCustomWidth');callback();}};
+    vm.runInNewContext('(function(){' + line + '})').call(app);
+    assert.equal(renders, 1);
+});
+
+test('vertical custom size uses panel thickness and a configurable along-panel length', () => {
+    for (const orientation of [SIDE.LEFT, SIDE.RIGHT]) {
+        const {app} = searchHarness(orientation, 'pill', {searchButtonSizeMode: 'custom', searchPillHeight: 32, searchCustomWidth: 180});
+        app._updateSearchPanelButton();
+        assert.equal(app.searchPanelButton.width, 32);
+        assert.equal(app.searchPanelButton.height, 180);
+        app.searchCustomWidth = 0;
+        app._updateSearchPanelButton();
+        assert.equal(app.searchPanelButton.height, -1);
+    }
+});
+
+test('explicit narrow widths clip their content and Auto removes clipping again', () => {
+    const {app} = searchHarness(SIDE.BOTTOM, 'pill', {searchButtonSizeMode: 'custom', searchCustomWidth: 40});
+    app._updateSearchPanelButton();
+    assert.equal(app.searchPanelButton.clip_to_allocation, true);
+    app.searchButtonSizeMode = 'auto';app._updateSearchPanelButton();
+    assert.equal(app.searchPanelButton.clip_to_allocation, false);
+});
+
+test('custom dimensions use logical pixels at HiDPI and keep icons inside the control', () => {
+    for (const mode of ['icon', 'pill', 'box']) {
+        const {app} = searchHarness(SIDE.BOTTOM, mode, {searchButtonSizeMode: 'custom', searchPillHeight: 32, searchCustomWidth: 250, _panelHeight: 96}, 2);
+        app._updateSearchPanelButton();
+        assert.equal(app.searchPanelButton.height, 64);
+        assert.equal(app.searchPanelButton.width, mode === 'icon' ? 64 : 500);
+        assert.equal(app.searchPanelIcon.iconSize, mode === 'icon' ? 24 : 17);
+        assert.ok(app.searchPanelIcon.iconSize * 2 < app.searchPanelButton.height);
+    }
+});
+
+test('custom bounds and width zero preserve safe legacy heights and natural widths', () => {
+    for (const [height, width, expectedH, expectedW] of [
+        [-10, -20, 20, -1], [500, 9999, 48, 800], [30, 0, 30, -1], [32, NaN, 32, -1]
+    ]) {
+        const {app} = searchHarness(SIDE.BOTTOM, 'pill', {searchButtonSizeMode: 'custom', searchPillHeight: height, searchCustomWidth: width});
+        app._updateSearchPanelButton();
+        assert.equal(app.searchPanelButton.height, expectedH);
+        assert.equal(app.searchPanelButton.width, expectedW);
+    }
+    const {app} = searchHarness(SIDE.BOTTOM, 'box', {searchButtonSizeMode: 'custom', searchPillHeight: 30});
+    app._updateSearchPanelButton();
+    assert.equal(app.searchPanelButton.width, Math.round(48 * 4.9), 'old custom-height configs keep automatic width');
 });
 
 // ---- upright letters, one per line ----

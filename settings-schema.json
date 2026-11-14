@@ -20,7 +20,7 @@
         "general-lang-search": {
             "type": "section",
             "title": "Language and Search Button / Idioma e Botão de Pesquisa",
-            "keys": ["language", "search-display", "search-button-size-mode", "search-pill-height", "search-button-spacing"]
+            "keys": ["language", "search-display", "search-button-size-mode", "search-pill-height", "search-custom-width", "search-button-spacing"]
         },
         "general-behavior": {
             "type": "section",
@@ -104,10 +104,10 @@
     "search-button-size-mode": {
         "type": "combobox",
         "default": "auto",
-        "description": "Search button size / Tamanho do botão de pesquisa",
+        "description": "Search size / Tamanho da pesquisa",
         "options": {
-            "Automatic (adapt to panel height) / Automático (ajustar à barra de tarefas)": "auto",
-            "Custom height / Altura personalizada": "custom"
+            "Automatic (current) / Automático (atual)": "auto",
+            "Custom / Personalizado": "custom"
         }
     },
     "search-pill-height": {
@@ -118,6 +118,18 @@
         "step": 1,
         "units": "px",
         "description": "Custom search button height / Altura personalizada do botão",
+        "tooltip": "The icon stays square. On vertical panels, height is the thickness, limited to the panel size. / O ícone permanece quadrado. Em painéis verticais, a altura é a espessura, limitada ao tamanho do painel.",
+        "dependency": "search-button-size-mode=custom"
+    },
+    "search-custom-width": {
+        "type": "spinbutton",
+        "default": 0,
+        "min": 0,
+        "max": 800,
+        "step": 1,
+        "units": "px",
+        "description": "Custom width (0 = automatic) / Largura personalizada (0 = automática)",
+        "tooltip": "For icon and label or search box only. On vertical panels, width is the length along the panel. 0 uses automatic width. / Somente para ícone e rótulo ou caixa de pesquisa. Em painéis verticais, a largura é o comprimento ao longo do painel. 0 usa largura automática.",
         "dependency": "search-button-size-mode=custom"
     },
     "search-button-spacing": {

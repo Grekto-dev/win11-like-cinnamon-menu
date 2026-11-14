@@ -29,6 +29,7 @@ import os
 import sys
 import tempfile
 import time
+from urllib.parse import urlsplit
 
 import gi
 gi.require_version("Gtk", "3.0")
@@ -51,6 +52,12 @@ I18N = {
         "page_language": "Language",
         "page_layout": "Layout options",
         "page_behavior": "Behavior",
+        "page_about": "About",
+        "about_description": "Windows 11 Start Menu and Taskbar Search with Cinnamon theme integration",
+        "about_author": "Author",
+        "about_license": "License",
+        "about_license_text": "GNU General Public License v3 or later (GPL-3.0-or-later)",
+        "about_repository": "Repository",
         "ok": "OK",
         "back": "Back",
         "language_label": "Language",
@@ -73,10 +80,13 @@ I18N = {
         "search_icon": "Search icon only",
         "search_pill": "Search icon and label",
         "search_box": "Search box",
-        "search_size_mode": "Search height",
-        "size_auto": "Automatic",
+        "search_size_mode": "Search size",
+        "size_auto": "Automatic (current)",
         "size_custom_f": "Custom",
         "search_pill_height": "Custom height",
+        "search_custom_width": "Custom width (0 = automatic)",
+        "search_height_tip": "The icon stays square. On vertical panels, height is the thickness, limited to the panel size.",
+        "search_width_tip": "For icon and label or search box only. On vertical panels, width is the length along the panel. 0 uses automatic width.",
         "search_spacing": "Extra spacing on both sides of Search",
         "search_spacing_tip": "Equally increases the gap between the Start button and Search, and between Search and the next applet",
         "menu_size": "Menu size",
@@ -133,6 +143,12 @@ I18N = {
         "page_language": "Idioma",
         "page_layout": "Opções de layout",
         "page_behavior": "Comportamento",
+        "page_about": "Sobre",
+        "about_description": "Menu Iniciar e pesquisa na barra de tarefas no estilo Windows 11 com integração ao tema do Cinnamon",
+        "about_author": "Autoria",
+        "about_license": "Licença",
+        "about_license_text": "Licença Pública Geral GNU v3 ou posterior (GPL-3.0-or-later)",
+        "about_repository": "Repositório",
         "ok": "OK",
         "back": "Voltar",
         "language_label": "Idioma",
@@ -155,10 +171,13 @@ I18N = {
         "search_icon": "Somente ícone de pesquisa",
         "search_pill": "Ícone e rótulo de pesquisa",
         "search_box": "Caixa de pesquisa",
-        "search_size_mode": "Altura da pesquisa",
-        "size_auto": "Automático",
-        "size_custom_f": "Personalizada",
+        "search_size_mode": "Tamanho da pesquisa",
+        "size_auto": "Automático (atual)",
+        "size_custom_f": "Personalizado",
         "search_pill_height": "Altura personalizada",
+        "search_custom_width": "Largura personalizada (0 = automática)",
+        "search_height_tip": "O ícone permanece quadrado. Em painéis verticais, a altura é a espessura, limitada ao tamanho do painel.",
+        "search_width_tip": "Somente para ícone e rótulo ou caixa de pesquisa. Em painéis verticais, a largura é o comprimento ao longo do painel. 0 usa largura automática.",
         "search_spacing": "Espaçamento extra dos dois lados da pesquisa",
         "search_spacing_tip": "Aumenta igualmente a distância entre o botão Iniciar e a pesquisa e entre a pesquisa e o próximo applet",
         "menu_size": "Tamanho do menu",
@@ -441,7 +460,8 @@ FOLDER_ROWS = [
 ]
 PAGES = [("language", "page_language", "preferences-desktop-locale-symbolic"),
          ("layout", "page_layout", "view-grid-symbolic"),
-         ("behavior", "page_behavior", "preferences-other-symbolic")]
+         ("behavior", "page_behavior", "preferences-other-symbolic"),
+         ("about", "page_about", "help-about-symbolic")]
 DEFAULTS = {"language": "en", "overlay-key": "Super_L::Super_R"}
 
 
@@ -485,6 +505,7 @@ class SettingsWindow(Gtk.Window):
         self.stack.add_named(self._build_language_page(), "language")
         self.stack.add_named(self._build_layout_page(), "layout")
         self.stack.add_named(self._build_behavior_page(), "behavior")
+        self.stack.add_named(self._build_about_page(), "about")
 
         outer.pack_start(Gtk.Separator(), False, False, 0)
         bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
@@ -760,7 +781,10 @@ class SettingsWindow(Gtk.Window):
         if vertical:
             self._disable_option("search-display", "box")
         self.row(search, "search_size_mode", self.combo("search-button-size-mode", SEARCH_HEIGHT_MODE, "auto"))
-        self.row(search, "search_pill_height", self.spin("search-pill-height", 20, 60, 30))
+        self.row(search, "search_pill_height", self.spin("search-pill-height", 20, 64, 30),
+                 tip_key="search_height_tip")
+        self.row(search, "search_custom_width", self.spin("search-custom-width", 0, 800, 0),
+                 tip_key="search_width_tip")
         self.row(search, "search_spacing", self.spin("search-button-spacing", 0, 24, 0),
                  tip_key="search_spacing_tip")
 
@@ -857,6 +881,42 @@ class SettingsWindow(Gtk.Window):
         self.row(group, "enable_autoscroll", self.switch("enable-autoscroll", True))
         return self.scrolled(box)
 
+    def _build_about_page(self):
+        try:
+            with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "metadata.json"),
+                      encoding="utf-8") as handle:
+                metadata = json.load(handle)
+        except (OSError, ValueError):
+            metadata = {}
+        # Metadata is local data only: never evaluate it or treat its text as markup.
+        metadata = ({key: value for key, value in metadata.items() if isinstance(value, str)}
+                    if isinstance(metadata, dict) else {})
+        box = self.page_box("page_about")
+        name = Gtk.Label(label=metadata.get("name") or UUID, xalign=0)
+        name.set_line_wrap(True)
+        name.get_style_context().add_class("w11-title")
+        box.pack_start(name, False, False, 0)
+        box.pack_start(self.label("about_description"), False, False, 0)
+        group = self.group(box)
+        # Attribution is from this source's copyright header, not the license
+        # document's FSF copyright or a guessed repository contributor.
+        self.row(group, "about_author", Gtk.Label(label="win11-menu contributors"))
+        self.row(group, "about_license", self.label("about_license_text"))
+        website = metadata.get("website", "")
+        try:
+            uri = urlsplit(website)
+            safe_link = (uri.scheme in ("https", "http") and uri.hostname
+                         and not uri.username and not uri.password
+                         and not any(c.isspace() or ord(c) < 32 for c in website))
+        except ValueError:
+            safe_link = False
+        if safe_link:
+            repository = Gtk.LinkButton(uri=website)
+            self._bind(repository.set_label, "about_repository")
+            repository.set_halign(Gtk.Align.START)
+            box.pack_start(repository, False, False, 0)
+        return self.scrolled(box)
+
     # -- overlay key capture -----------------------------------------------------
     def _refresh_overlay_label(self):
         if self.capturing:
@@ -916,7 +976,7 @@ class SettingsWindow(Gtk.Window):
     # -- sensitivity ---------------------------------------------------------------
     def _update_sensitivity(self):
         c = self.controls
-        display_on = c["search-display"].get_active_id() in ("pill", "box")
+        display_on = c["search-display"].get_active_id() in ("icon", "pill", "box")
         search_custom = display_on and c["search-button-size-mode"].get_active_id() == "custom"
         menu_custom_size = c["menu-size"].get_active_id() == "custom"
         rules = {
@@ -925,6 +985,7 @@ class SettingsWindow(Gtk.Window):
             "search-pill-height": search_custom,
             "custom-menu-width": menu_custom_size,
             "custom-menu-height": menu_custom_size,
+            "search-custom-width": search_custom and c["search-display"].get_active_id() in ("pill", "box"),
             "hover-delay": c["activate-on-hover"].get_active(),
         }
         for key, enabled in rules.items():

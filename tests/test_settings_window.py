@@ -44,6 +44,7 @@ FIXTURE_KEYS = [
     ("search-display", "combobox", "pill", "pill"),
     ("search-button-size-mode", "combobox", "auto", "auto"),
     ("search-pill-height", "spinbutton", 30, 30),
+    ("search-custom-width", "spinbutton", 0, 0),
     ("search-button-spacing", "spinbutton", 0, 0),
     ("icon-size-mode", "generic", "standard", "standard"),
     ("menu-size", "combobox", "large", "large"),
@@ -305,6 +306,85 @@ class MenuSizeTest(WindowTestCase):
         self.assertFalse(os.path.exists(self.trigger()), "live drag sync must not trigger a feedback write")
 
 
+class SearchSizeTest(WindowTestCase):
+    def test_search_size_labels_and_hints_follow_live_language(self):
+        win = self.open_window()
+        for lang, title, options, width_label, height_tip, width_tip in (
+                ("en", "Search size", ["Automatic (current)", "Custom"],
+                 "Custom width (0 = automatic)",
+                 "The icon stays square. On vertical panels, height is the thickness, limited to the panel size.",
+                 "For icon and label or search box only. On vertical panels, width is the length along the panel. 0 uses automatic width."),
+                ("ptbr", "Tamanho da pesquisa", ["Automático (atual)", "Personalizado"],
+                 "Largura personalizada (0 = automática)",
+                 "O ícone permanece quadrado. Em painéis verticais, a altura é a espessura, limitada ao tamanho do painel.",
+                 "Somente para ícone e rótulo ou caixa de pesquisa. Em painéis verticais, a largura é o comprimento ao longo do painel. 0 usa largura automática.")):
+            win.language_combo.set_active_id(lang)
+            self.assertIn(title, visible_texts(win))
+            self.assertIn(width_label, visible_texts(win))
+            self.assertIn(height_tip, visible_texts(win))
+            self.assertIn(width_tip, visible_texts(win))
+            self.assertEqual([r[0] for r in win.controls["search-button-size-mode"].get_model()], options)
+        with open(os.path.join(os.path.dirname(HERE), "settings-schema.json"), encoding="utf-8") as handle:
+            schema = json.load(handle)
+        self.assertEqual(schema["search-button-size-mode"]["description"], "Search size / Tamanho da pesquisa")
+        self.assertEqual(schema["search-button-size-mode"]["options"], {
+            "Automatic (current) / Automático (atual)": "auto", "Custom / Personalizado": "custom"})
+
+    def test_custom_width_schema_control_sensitivity_and_persistence(self):
+        win = self.open_window()
+        self.assertIn("search-custom-width", win.controls)
+        width = win.controls["search-custom-width"]
+        self.assertEqual(width.get_value_as_int(), 0)
+        self.assertEqual((width.get_adjustment().get_lower(), width.get_adjustment().get_upper()),
+                         (0, 800))
+        with open(os.path.join(os.path.dirname(HERE), "settings-schema.json"), encoding="utf-8") as handle:
+            schema = json.load(handle)
+        entry = schema["search-custom-width"]
+        self.assertEqual((entry["type"], entry["default"], entry["min"], entry["max"]),
+                         ("spinbutton", 0, 0, 800))
+        self.assertIn("search-custom-width", schema["layout1"]["general-lang-search"]["keys"])
+        for display in ("hidden", "icon", "pill", "box"):
+            for mode in ("auto", "custom"):
+                with self.subTest(display=display, mode=mode):
+                    win.controls["search-display"].set_active_id(display)
+                    win.controls["search-button-size-mode"].set_active_id(mode)
+                    self.assertEqual(width.is_sensitive(), mode == "custom" and display in ("pill", "box"))
+                    self.assertEqual(win.controls["search-pill-height"].is_sensitive(),
+                                     mode == "custom" and display != "hidden")
+                    self.assertEqual(win.controls["search-button-size-mode"].is_sensitive(), display != "hidden")
+        self.settle(win)
+        before = self.read_config()
+        width.set_value(800)
+        self.assertEqual(self.read_config(), before, "width changes must be debounced")
+        self.settle(win)
+        expected = copy.deepcopy(before)
+        expected["search-custom-width"]["value"] = 800
+        self.assertEqual(self.read_config(), expected)
+        win.close_now()
+        reopened = self.open_window()
+        self.assertEqual(reopened.controls["search-custom-width"].get_value_as_int(), 800)
+        reopened.controls["search-custom-width"].set_value(0)
+        self.settle(reopened)
+        self.assertEqual(self.read_config()["search-custom-width"]["value"], 0)
+
+    def test_custom_height_keeps_legacy_key_supports_64_and_reopens(self):
+        win = self.open_window(**{"search-display": "icon", "search-button-size-mode": "custom"})
+        height = win.controls["search-pill-height"]
+        self.assertEqual(height.get_value_as_int(), 30)
+        self.assertEqual((height.get_adjustment().get_lower(), height.get_adjustment().get_upper()),
+                         (20, 64))
+        before = self.read_config()
+        height.set_value(64)
+        self.settle(win)
+        expected = copy.deepcopy(before)
+        expected["search-pill-height"]["value"] = 64
+        self.assertEqual(self.read_config(), expected)
+        win.close_now()
+        reopened = self.open_window()
+        self.assertEqual(reopened.controls["search-pill-height"].get_value_as_int(), 64)
+        self.assertTrue(reopened.controls["search-pill-height"].is_sensitive())
+
+
 class StagedLanguageTest(WindowTestCase):
     def test_window_opens_in_the_saved_language(self):
         win = self.open_window(language="ptbr")
@@ -355,13 +435,13 @@ def find_all(root, kind):
 class PageStructureTest(WindowTestCase):
     def test_every_page_body_is_inside_a_scrolled_window(self):
         win = self.open_window()
-        pages = [win.stack.get_child_by_name(n) for n in ("language", "layout", "behavior")]
+        pages = [win.stack.get_child_by_name(n) for n in ("language", "layout", "behavior", "about")]
         pages += list(win.layout_stack.get_children())
-        self.assertEqual(len(pages), 3 + 3)
+        self.assertEqual(len(pages), 4 + 3)
         for page in pages:
             self.assertTrue(find_all(page, Gtk.ScrolledWindow), type(page).__name__)
         # the content really sits inside the scrolled window, not next to it
-        for name in ("language", "behavior"):
+        for name in ("language", "behavior", "about"):
             self.assertIsInstance(win.stack.get_child_by_name(name), Gtk.ScrolledWindow)
         self.assertIsInstance(win.layout_stack.get_child_by_name("main"), Gtk.ScrolledWindow)
 
@@ -388,6 +468,84 @@ class PageStructureTest(WindowTestCase):
         self.assertEqual(win.layout_stack.get_visible_child_name(), "main")
         sections["recent"].get_parent().emit("row-activated", sections["recent"])
         self.assertEqual(win.layout_stack.get_visible_child_name(), "recent")
+
+
+class AboutPageTest(WindowTestCase):
+    def test_unavailable_or_damaged_local_metadata_does_not_break_settings(self):
+        metadata_path = os.path.join(self.tmp, "metadata.json")
+        for content in (None, "{broken", "[]", '{"name": [], "website": {}}'):
+            with self.subTest(content=content):
+                if content is not None:
+                    with open(metadata_path, "w", encoding="utf-8") as handle:
+                        handle.write(content)
+                with unittest.mock.patch.object(self.mod, "__file__", os.path.join(self.tmp, "settings.py")):
+                    try:
+                        win = self.open_window(page="about")
+                    except Exception as exc:
+                        self.fail("damaged metadata must not break settings: %s" % exc)
+                page = win.stack.get_child_by_name("about")
+                self.assertIn(self.mod.UUID, visible_texts(page))
+                self.assertEqual(find_all(page, Gtk.LinkButton), [])
+                win.destroy()
+
+    def test_about_live_language_changes_labels_description_license_and_link(self):
+        win = self.open_window(page="about")
+        page = win.stack.get_child_by_name("about")
+        for lang, heading, author, license_label, repository, description in (
+                ("ptbr", "Sobre", "Autoria", "Licença", "Repositório",
+                 "Menu Iniciar e pesquisa na barra de tarefas no estilo Windows 11 com integração ao tema do Cinnamon"),
+                ("en", "About", "Author", "License", "Repository",
+                 "Windows 11 Start Menu and Taskbar Search with Cinnamon theme integration")):
+            win.language_combo.set_active_id(lang)
+            texts = visible_texts(page)
+            for text in (heading, author, license_label, repository, description,
+                         self.mod.I18N[lang]["about_license_text"]):
+                self.assertIn(text, texts)
+            self.assertIn(heading, visible_texts(win.sidebar_rows["about"]))
+            self.assertEqual(win.stack.get_visible_child_name(), "about")
+        self.assertEqual(self.read_config()["language"]["value"], "en")
+
+    def test_about_metadata_is_plain_text_and_never_creates_executable_links(self):
+        metadata_path = os.path.join(self.tmp, "metadata.json")
+        name = '<b>$(touch %s)</b>' % os.path.join(self.tmp, "must-not-exist")
+        for website in ("javascript:alert(1)", "file:///usr/bin/sh", "https://bad host/repo",
+                        "https://user:pass@example.com/repo"):
+            with self.subTest(website=website):
+                with open(metadata_path, "w", encoding="utf-8") as handle:
+                    json.dump({"name": name, "website": website}, handle)
+                with unittest.mock.patch.object(self.mod, "__file__", os.path.join(self.tmp, "settings.py")):
+                    win = self.open_window(page="about")
+                page = win.stack.get_child_by_name("about")
+                self.assertIn(name, visible_texts(page))
+                self.assertTrue(all(not label.get_use_markup() for label in find_all(page, Gtk.Label)))
+                self.assertEqual(find_all(page, Gtk.LinkButton), [])
+                self.assertFalse(os.path.exists(os.path.join(self.tmp, "must-not-exist")))
+                win.destroy()
+
+    def test_about_sidebar_page_shows_local_project_identity_and_repository(self):
+        before = self.read_config()
+        win = self.open_window(page="about")
+        self.assertEqual(win.stack.get_visible_child_name(), "about")
+        self.assertEqual([p[0] for p in self.mod.PAGES], ["language", "layout", "behavior", "about"])
+        page = win.stack.get_child_by_name("about")
+        self.assertIsInstance(page, Gtk.ScrolledWindow)
+        with open(os.path.join(os.path.dirname(HERE), "metadata.json"), encoding="utf-8") as handle:
+            metadata = json.load(handle)
+        texts = visible_texts(page)
+        self.assertIn(metadata["name"], texts)
+        self.assertIn(metadata["description"], texts)
+        self.assertIn("win11-menu contributors", texts)  # existing settings source copyright, not guessed
+        self.assertIn("GNU General Public License v3 or later (GPL-3.0-or-later)", texts)
+        self.assertEqual(len(find_all(page, Gtk.LinkButton)), 1)
+        link = find_all(page, Gtk.LinkButton)[0]
+        self.assertEqual(link.get_uri(), metadata["website"])
+        self.assertEqual(link.get_label(), "Repository")
+        win.select_page("layout")
+        win.sidebar.select_row(win.sidebar_rows["about"])
+        self.assertEqual(win.stack.get_visible_child_name(), "about")
+        self.settle(win)
+        self.assertEqual(self.read_config(), before)
+        self.assertFalse(os.path.exists(self.trigger()))
 
 
 class LiveWriteTest(WindowTestCase):
@@ -493,7 +651,7 @@ class SingleInstanceTest(TempDirsMixin, unittest.TestCase):
             self.assertIsNot(reopened, first, "a destroyed Gtk window reappears as a blank page")
             self.assertIsNotNone(reopened.get_child())
             self.assertEqual(reopened.stack.get_visible_child_name(), "layout")
-            self.assertEqual(len(reopened.controls), 32)
+            self.assertEqual(len(reopened.controls), 33)
             self.assertEqual(self.read_config()["menu-icon"]["value"], "cs-xlet-error")
 
     @unittest.skipUnless(Gtk.init_check()[0], "needs a display")
@@ -546,7 +704,7 @@ app = m.SettingsApplication(sys.argv[2], "layout", sys.argv[3], sys.argv[4])
 auxiliary = []; timed_out = []
 def close_main():
     assert app.window.get_child() is not None
-    assert len(app.window.controls) == 32
+    assert len(app.window.controls) == 33
     aux = m.Gtk.Window(application=app); auxiliary.append(aux)
     aux.hide()  # Reproduce an auxiliary window keeping the Gtk.Application alive.
     picker = app.window.controls["menu-icon"]
@@ -628,7 +786,8 @@ class SensitivityTest(WindowTestCase):
         self.assertFalse(self.active(win, "custom-menu-height"))
 
     def test_search_height_controls_follow_display_and_size_mode(self):
-        matrix = [("hidden", "auto", False, False), ("icon", "custom", False, False),
+        matrix = [("hidden", "auto", False, False), ("hidden", "custom", False, False),
+                  ("icon", "auto", True, False), ("icon", "custom", True, True),
                   ("pill", "auto", True, False), ("pill", "custom", True, True),
                   ("box", "auto", True, False), ("box", "custom", True, True)]
         for display, mode, combo_on, spin_on in matrix:
@@ -776,7 +935,7 @@ class ActionsAndWindowTest(WindowTestCase):
         self.assertEqual(win.get_icon_name(), "preferences-system")
         self.assertEqual(win.ok_button.get_label(), "OK")
         self.assertTrue(win.ok_button.get_style_context().has_class("suggested-action"))
-        self.assertEqual(len(win.sidebar.get_children()), 3)
+        self.assertEqual(len(win.sidebar.get_children()), 4)
 
     def test_specified_tooltips_follow_the_language(self):
         win = self.open_window(language="en")
@@ -874,6 +1033,30 @@ class VerticalPanelTest(WindowTestCase):
             for ident in ("hidden", "icon", "pill"):
                 self.assertTrue(win.option_sensitive("search-display", ident))
             self.assertIn(self.mod.I18N["ptbr"]["search_vertical_note"], self.visible_texts(win))
+
+    def test_saved_box_fallback_keeps_custom_dimensions_on_vertical_panels(self):
+        for position in ("left", "right"):
+            with self.subTest(position=position):
+                self.with_position(position)
+                win = self.open_window(**{"search-display": "box", "search-button-size-mode": "custom",
+                                          "search-pill-height": 64, "search-custom-width": 300})
+                before = self.read_config()
+                self.assertFalse(win.option_sensitive("search-display", "box"))
+                self.assertEqual(win.controls["search-display"].get_active_id(), "box")
+                for key, value in (("search-pill-height", 64), ("search-custom-width", 300)):
+                    self.assertTrue(win.controls[key].is_sensitive())
+                    self.assertEqual(win.controls[key].get_value_as_int(), value)
+                self.assertIn(self.mod.I18N["en"]["search_vertical_note"], visible_texts(win))
+                self.settle(win)
+                self.assertEqual(self.read_config(), before, "rendering fallback must not erase stored box preference")
+                win.controls["search-display"].set_active_id("pill")
+                win.controls["search-custom-width"].set_value(400)
+                win.close_now()
+                reopened = self.open_window()
+                self.assertEqual(reopened.controls["search-display"].get_active_id(), "pill")
+                self.assertEqual(reopened.controls["search-custom-width"].get_value_as_int(), 400)
+                self.assertEqual(reopened.controls["search-pill-height"].get_value_as_int(), 64)
+                reopened.destroy()
 
     def test_search_box_option_is_available_on_horizontal_panels(self):
         for position in ("top", "bottom", None):

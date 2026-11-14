@@ -90,6 +90,8 @@ git clone https://github.com/Grekto-dev/win11-like-cinnamon-menu.git ~/.local/sh
    - Extra spacing on both sides of Search (0–24 px): one value adds the same gap between Menu/Search and Search/the next applet, applied immediately. Zero keeps the original minimum spacing.
    - Panel icon and label
    - Footer shortcuts and behavioral options
+   - Search size: **Automatic (current)** preserves the existing layout; **Custom** sets height for icon, button or search bar, plus width for the button/bar. Width **0** keeps the natural/automatic width. On vertical panels this width sets the button's length along the panel.
+   - **About / Sobre**: project information, license and repository link.
 
 ---
 
@@ -110,4 +112,4 @@ This project is licensed under the GNU General Public License v3.0 (GPL-3.0) —
 
 ## Settings window
 
-*Configure…* opens a standalone GTK window (`win11-menu-settings.py`, one per panel instance) with **Language**, **Layout options** (with *Folders* and *Recent* sub-pages) and **Behavior**. Every page scrolls, so nothing is hidden in a small window. Texts appear in one language at a time and switch immediately when you change the language; the Start menu and search language only change when you press **OK**. All other settings apply live. The window writes the instance's Cinnamon settings JSON and touches a trigger file in `~/.cache/win11-menu/`, which the applet watches. If the script is missing, Cinnamon's native settings page is used as a fallback.
+*Configure…* opens a standalone GTK window (`win11-menu-settings.py`, one per panel instance) with **Language**, **Layout options** (with *Folders* and *Recent* sub-pages), **Behavior** and **About**. Every page scrolls, so nothing is hidden in a small window. Texts appear in one language at a time and switch immediately when you change the language; the Start menu and search language only change when you press **OK**. All other settings apply live. The window writes the instance's Cinnamon settings JSON and touches a trigger file in `~/.cache/win11-menu/`, which the applet watches. If the script is missing, Cinnamon's native settings page is used as a fallback.
