@@ -1412,6 +1412,16 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         return mode;
     }
 
+    // Clutter places a child at floor((available - size) / 2). An odd leftover therefore
+    // leaves its centre 0.5px above the bar centre. Shrink by one pixel (or grow by one when
+    // already at the minimum) so the control is centred on a whole pixel.
+    _matchCentreParity(available, size, minimum = 1) {
+        size = Math.round(size);
+        if ((available - size) % 2 === 0)
+            return size;
+        return size - 1 >= minimum ? size - 1 : Math.min(available, size + 1);
+    }
+
     _updateSearchPanelButton() {
         const mode = this._searchMode();
         const spacing = mode !== "hidden"
@@ -1452,7 +1462,12 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         let ph = this._panelHeight || (this.panel ? this.panel.height : 40);
         const custom = this.searchButtonSizeMode === "custom";
         const scale = custom ? (global.ui_scale || 1) : 1;
-        const customHeight = Math.min(ph, Math.max(20, Math.min(64, Number(this.searchPillHeight) || 30)) * scale);
+        const customHeight = this._matchCentreParity(ph,
+            Math.min(ph, Math.max(20, Math.min(64, Number(this.searchPillHeight) || 30)) * scale),
+            Math.min(ph, 20 * scale));
+        // Whole-pixel icon fit inside a control of the given size (icon sizes are logical).
+        const fitIcon = (box, icon, minimum) => Math.max(1, Math.round(
+            this._matchCentreParity(box, icon * scale, minimum * scale) / scale));
         const requestedWidth = Number(this.searchCustomWidth);
         const customWidth = custom && Number.isFinite(requestedWidth)
             ? Math.max(0, Math.min(800, requestedWidth)) * scale : 0;
@@ -1473,11 +1488,12 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             let iconSize;
             if (custom) {
                 const logicalHeight = customHeight / scale;
-                iconSize = Math.max(1, Math.min(logicalHeight - 6, Math.round(logicalHeight * 0.75)));
+                iconSize = fitIcon(customHeight, Math.max(1, Math.min(logicalHeight - 6, Math.round(logicalHeight * 0.75))), 1);
             } else if (this.menuIconSizeMode === "custom") {
-                iconSize = Math.min(this.menuIconSize || 32, ph);
+                // Natural size: the icon is the control, so it must match the bar's parity.
+                iconSize = this._matchCentreParity(ph, Math.min(this.menuIconSize || 32, ph));
             } else {
-                iconSize = Math.max(16, Math.min(ph - 6, Math.round(ph * 0.8)));
+                iconSize = this._matchCentreParity(ph, Math.max(16, Math.min(ph - 6, Math.round(ph * 0.8))), Math.min(16, ph));
             }
             this.searchPanelIcon.set_style(null);
             this.searchPanelIcon.set_icon_size(iconSize);
@@ -1503,7 +1519,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
                 pillH = customHeight;
             } else {
                 // Auto: scale to ~75% of panel height (e.g. 30px on 40px panel)
-                pillH = Math.max(24, Math.min(ph - 6, Math.round(ph * 0.75)));
+                pillH = this._matchCentreParity(ph, Math.max(24, Math.min(ph - 6, Math.round(ph * 0.75))), Math.min(24, ph));
             }
 
             // Keep the icon and upright letter column centred across the bar's thickness.
@@ -1523,7 +1539,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             }
 
             const logicalHeight = custom ? pillH / scale : pillH;
-            let searchIconSize = Math.max(14, Math.min(logicalHeight - 8, Math.round(logicalHeight * 0.54)));
+            let searchIconSize = fitIcon(pillH, Math.max(14, Math.min(logicalHeight - 8, Math.round(logicalHeight * 0.54))), 14);
             this.searchPanelIcon.set_style(null);
             this.searchPanelIcon.set_icon_size(searchIconSize);
         }

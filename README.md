@@ -90,7 +90,7 @@ git clone https://github.com/Grekto-dev/win11-like-cinnamon-menu.git ~/.local/sh
    - Extra spacing on both sides of Search (0–24 px): one value adds the same gap between Menu/Search and Search/the next applet, applied immediately. Zero keeps the original minimum spacing.
    - Panel icon and label
    - Footer shortcuts and behavioral options
-   - Search size: **Automatic (default)** preserves the existing layout; **Custom** sets height for icon, button or search bar, plus width for the button/bar. Width **0** keeps the natural/automatic width. On vertical panels this width sets the button's length along the panel.
+   - Search size: **Automatic (default)** preserves the existing layout; **Custom** sets height for icon, button or search bar, plus width for the button/bar. Width **0** keeps the natural/automatic width. On vertical panels this width sets the button's length along the panel. The search control (icon, button or bar) is always centred on the taskbar's centre line: when a size would leave a half-pixel offset, the rendered size is adjusted by at most 1 px.
    - **About / Sobre**: project information, license and repository link.
 
 ---

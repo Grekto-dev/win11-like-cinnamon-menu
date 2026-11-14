@@ -16,7 +16,7 @@ function render(spacing, visible = true, orientation = 3, rtl = false) {
     const noop = () => {};
     const widget = () => ({hide: noop, show: noop, set_text: noop, set_style: noop,
         set_icon_size: noop, set_style_class_name: noop, set_height: noop, set_width: noop, set_hint_text: noop, set_y_align: noop, set_x_align: noop, set_vertical: noop});
-    update.call({searchDisplay: visible ? 'pill' : 'hidden', searchButtonSpacing: spacing, _orientation: orientation, _searchMode: methods._searchMode, _applyVerticalSearchLabel: noop, _clearVerticalSearchLabel: noop,
+    update.call({searchDisplay: visible ? 'pill' : 'hidden', searchButtonSpacing: spacing, _orientation: orientation, _searchMode: methods._searchMode, _matchCentreParity: methods._matchCentreParity, _applyVerticalSearchLabel: noop, _clearVerticalSearchLabel: noop,
         actor: {set_style: s => {style = s;}, get_text_direction: () => rtl ? 1 : 0},
         searchPanelButton: widget(), searchPanelLabel: widget(), searchPanelIcon: widget(), searchPanelEntry: widget(), searchPanelLabelBin: widget(),
         t: s => s, _updatePanelButtonsActiveState: noop});

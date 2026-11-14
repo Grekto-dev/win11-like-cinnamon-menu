@@ -231,6 +231,82 @@ test('custom Search icon size is independent of the Start icon size', () => {
     assert.equal(app.searchPanelIcon.iconSize, 44);
 });
 
+// Whole-pixel vertical centring. Clutter floors an odd leftover, which leaves the
+// control's centre 0.5px above the bar centre; sizes must match the bar's parity.
+test('Search is centred on the bar for every mode, height and bar thickness (no half-pixel offsets)', () => {
+    const failures = [];
+    const thickness = (app, mode, vertical) => {
+        const b = app.searchPanelButton;
+        if (mode === 'icon' && b.width === -1)
+            return app.searchPanelIcon.iconSize; // natural size: the icon (theme padding is symmetric and even)
+        return vertical ? b.width : b.height;
+    };
+    for (const orientation of [SIDE.BOTTOM, SIDE.TOP, SIDE.LEFT, SIDE.RIGHT]) {
+        const vertical = orientation === SIDE.LEFT || orientation === SIDE.RIGHT;
+        for (const ph of [36, 40, 44, 46, 47, 48, 50, 56]) {
+            for (const mode of ['icon', 'pill', 'box']) {
+                const cases = [['auto', 30, 'auto', 32], ['auto', 30, 'custom', 45], ['auto', 30, 'custom', 31]]
+                    .map(([sm, h, im, is]) => ({searchButtonSizeMode: sm, searchPillHeight: h, menuIconSizeMode: im, menuIconSize: is}))
+                    .concat([20, 25, 30, 31, 32, 45, 64].map(h => ({searchButtonSizeMode: 'custom', searchPillHeight: h, menuIconSizeMode: 'auto', menuIconSize: 32})));
+                for (const extra of cases) {
+                    const {app} = searchHarness(orientation, mode, {_panelHeight: ph, ...extra});
+                    app._updateSearchPanelButton();
+                    const effective = app._searchMode();
+                    const size = thickness(app, effective, vertical);
+                    const tag = `${vertical ? 'vertical' : 'horizontal'} ph=${ph} ${mode} ${JSON.stringify(extra)} -> ${size}`;
+                    if ((ph - size) % 2 !== 0) failures.push('centre off by half a pixel: ' + tag);
+                    if (size > ph) failures.push('larger than the bar: ' + tag);
+                    if (extra.searchButtonSizeMode === 'custom') {
+                        const wanted = Math.min(ph, extra.searchPillHeight);
+                        if (Math.abs(size - wanted) > 1) failures.push('custom height moved by more than 1px: ' + tag);
+                        if (size < Math.min(20, ph)) failures.push('below the 20px minimum: ' + tag);
+                    }
+                    const inner = effective === 'icon' && app.searchPanelButton.width === -1
+                        ? null : app.searchPanelIcon.iconSize;
+                    if (inner !== null && (size - inner) % 2 !== 0)
+                        failures.push('icon off-centre inside its control: ' + tag + ' icon=' + inner);
+                    if (extra.searchButtonSizeMode === 'auto' && effective !== 'icon') {
+                        const legacy = Math.max(24, Math.min(ph - 6, Math.round(ph * 0.75)));
+                        if (Math.abs(size - legacy) > 1) failures.push('automatic size drifted from the default: ' + tag);
+                    }
+                }
+            }
+        }
+    }
+    assert.deepEqual(failures.slice(0, 12), [], failures.length + ' misaligned cases');
+});
+
+test('HiDPI (2x): Search stays on a whole-pixel centre for every mode and custom height', () => {
+    const failures = [];
+    for (const orientation of [SIDE.BOTTOM, SIDE.LEFT]) {
+        const vertical = orientation === SIDE.LEFT;
+        for (const ph of [80, 94, 96, 100]) {
+            for (const mode of ['icon', 'pill', 'box']) {
+                if (vertical && mode === 'box') continue;
+                for (const height of [20, 25, 31, 32, 45]) {
+                    const {app} = searchHarness(orientation, mode, {_panelHeight: ph, searchButtonSizeMode: 'custom', searchPillHeight: height}, 2);
+                    app._updateSearchPanelButton();
+                    const b = app.searchPanelButton;
+                    const size = vertical && app._searchMode() !== 'icon' ? b.width : b.height;
+                    const tag = `ph=${ph} ${mode} h=${height} -> ${size} icon=${app.searchPanelIcon.iconSize}`;
+                    if ((ph - size) % 2 !== 0) failures.push('control off-centre: ' + tag);
+                    if ((size - app.searchPanelIcon.iconSize * 2) % 2 !== 0) failures.push('icon off-centre: ' + tag);
+                    if (size > ph) failures.push('larger than the bar: ' + tag);
+                }
+            }
+        }
+    }
+    for (const ph of [86, 94, 90, 98]) {
+        for (const mode of ['pill', 'box', 'icon']) {
+            const {app} = searchHarness(SIDE.BOTTOM, mode, {_panelHeight: ph, searchButtonSizeMode: 'auto'}, 2);
+            app._updateSearchPanelButton();
+            const size = mode === 'icon' ? app.searchPanelIcon.iconSize : app.searchPanelButton.height;
+            if ((ph - size) % 2 !== 0) failures.push(`automatic ${mode} off-centre: ph=${ph} -> ${size}`);
+        }
+    }
+    assert.deepEqual(failures.slice(0, 8), [], failures.length + ' misaligned HiDPI cases');
+});
+
 // Exercise both real render and active-state methods: the layout-only harness
 // deliberately stubs the latter and cannot catch inline-style replacement bugs.
 function searchStyleHarness(orientation, mode, extra = {}, uiScale = 1) {
