@@ -1425,7 +1425,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         const widthStyle = panelWidth > 0 ? ` width: ${panelWidth / (global.ui_scale || 1)}px;` : '';
         this.actor.set_style(`spacing: ${spacing}px; padding-${trailingEdge}: ${spacing}px;${widthStyle}`);
         // Exchange horizontal theme padding for margin: inset the painted Start
-        // button by 2 logical px, retaining a small margin around the wider highlight.
+        // button by 1 logical px, retaining a small margin around the wider highlight.
         if (this.startButtonBox) {
             this.startButtonBox.set_style(vertical ? 'padding: 0;' : null);
             if (!vertical && this.startButtonBox.get_stage()) {
@@ -1434,7 +1434,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
                 const style = [[St.Side.LEFT, 'left'], [St.Side.RIGHT, 'right']].map(([side, name]) => {
                     const padding = node.get_padding(side) / scale;
                     const margin = node.get_margin(side) / scale;
-                    const inset = Math.min(2, Math.max(0, padding));
+                    const inset = Math.min(1, Math.max(0, padding));
                     return `padding-${name}: ${padding - inset}px; margin-${name}: ${margin + inset}px;`;
                 }).join(' ');
                 this.startButtonBox.set_style(style);

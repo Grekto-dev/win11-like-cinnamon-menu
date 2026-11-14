@@ -106,7 +106,7 @@
         "default": "auto",
         "description": "Search size / Tamanho da pesquisa",
         "options": {
-            "Automatic (current) / Automático (atual)": "auto",
+            "Automatic (default) / Automático (padrão)": "auto",
             "Custom / Personalizado": "custom"
         }
     },

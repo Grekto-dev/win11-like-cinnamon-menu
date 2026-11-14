@@ -110,7 +110,7 @@ test('vertical: the letter column and icon are centred across the bar', () => {
     horizontal.app._updateSearchPanelButton();
     assert.deepEqual(h, [0], 'Clutter.ActorAlign.FILL again in a horizontal bar');
 });
-test('Start highlight expands horizontally while retaining a small 2px margin and stable neighbours', () => {
+test('Start highlight expands horizontally while retaining a small 1px margin and stable neighbours', () => {
     const {app} = searchHarness(SIDE.BOTTOM, 'pill');
     let style;
     app.startButtonBox = {set_style: s => {style = s;}, get_stage: () => ({}), get_theme_node: () => ({
@@ -118,10 +118,10 @@ test('Start highlight expands horizontally while retaining a small 2px margin an
     })};
     app._updateSearchPanelButton();
     const css = Object.fromEntries((style || '').split(';').filter(s => s.trim()).map(s => s.split(':').map(v => v.trim())));
-    assert.equal(css['padding-left'], '6px');
-    assert.equal(css['padding-right'], '6px');
-    assert.equal(css['margin-left'], '2px');
-    assert.equal(css['margin-right'], '2px');
+    assert.equal(css['padding-left'], '7px');
+    assert.equal(css['padding-right'], '7px');
+    assert.equal(css['margin-left'], '1px');
+    assert.equal(css['margin-right'], '1px');
     assert.equal(parseFloat(css['padding-left']) + parseFloat(css['margin-left']), 8);
     assert.equal(parseFloat(css['padding-right']) + parseFloat(css['margin-right']), 8);
     assert.doesNotMatch(style, /(?:^|;)\s*(?:width|height|padding-top|padding-bottom|margin-top|margin-bottom):/);
@@ -140,7 +140,7 @@ test('Start inset preserves asymmetric theme geometry, RTL, HiDPI and repeated u
             }};
             for (let repeat = 0; repeat < 3; repeat++) {
                 app._updateSearchPanelButton();
-                assert.equal(style, 'padding-left: 6px; margin-left: 4px; padding-right: 4px; margin-right: 6px;');
+                assert.equal(style, 'padding-left: 7px; margin-left: 3px; padding-right: 5px; margin-right: 5px;');
             }
         }
     }
@@ -151,7 +151,7 @@ test('Start inset never generates negative padding in compact themes', () => {
     app.startButtonBox = {set_style: s => {style = s;}, get_stage: () => ({}),
         get_theme_node: () => ({get_padding: () => 2, get_margin: () => 1})};
     app._updateSearchPanelButton();
-    assert.equal(style, 'padding-left: 0px; margin-left: 3px; padding-right: 0px; margin-right: 3px;');
+    assert.equal(style, 'padding-left: 1px; margin-left: 2px; padding-right: 1px; margin-right: 2px;');
 });
 test('Start construction waits for stage attachment before reading its theme', () => {
     const {app} = searchHarness(SIDE.BOTTOM, 'pill');
@@ -176,7 +176,7 @@ test('vertical controls use the actual panel width, without Start padding wideni
     app._orientation = SIDE.BOTTOM;
     app._updateSearchPanelButton();
     assert.doesNotMatch(rootStyle, /width:/);
-    assert.match(styles.at(-1), /padding-left: 6px; margin-left: 2px;/, 'horizontal inset restored');
+    assert.match(styles.at(-1), /padding-left: 7px; margin-left: 1px;/, 'horizontal inset restored');
 });
 test('vertical bars keep the extra Search gaps vertical: spacing between children and padding below, nothing sideways', () => {
     const calls = [];

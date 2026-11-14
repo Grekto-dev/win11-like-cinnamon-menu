@@ -310,11 +310,11 @@ class SearchSizeTest(WindowTestCase):
     def test_search_size_labels_and_hints_follow_live_language(self):
         win = self.open_window()
         for lang, title, options, width_label, height_tip, width_tip in (
-                ("en", "Search size", ["Automatic (current)", "Custom"],
+                ("en", "Search size", ["Automatic (default)", "Custom"],
                  "Custom width (0 = automatic)",
                  "The icon stays square. On vertical panels, height is the thickness, limited to the panel size.",
                  "For icon and label or search box only. On vertical panels, width is the length along the panel. 0 uses automatic width."),
-                ("ptbr", "Tamanho da pesquisa", ["Automático (atual)", "Personalizado"],
+                ("ptbr", "Tamanho da pesquisa", ["Automático (padrão)", "Personalizado"],
                  "Largura personalizada (0 = automática)",
                  "O ícone permanece quadrado. Em painéis verticais, a altura é a espessura, limitada ao tamanho do painel.",
                  "Somente para ícone e rótulo ou caixa de pesquisa. Em painéis verticais, a largura é o comprimento ao longo do painel. 0 usa largura automática.")):
@@ -328,7 +328,7 @@ class SearchSizeTest(WindowTestCase):
             schema = json.load(handle)
         self.assertEqual(schema["search-button-size-mode"]["description"], "Search size / Tamanho da pesquisa")
         self.assertEqual(schema["search-button-size-mode"]["options"], {
-            "Automatic (current) / Automático (atual)": "auto", "Custom / Personalizado": "custom"})
+            "Automatic (default) / Automático (padrão)": "auto", "Custom / Personalizado": "custom"})
 
     def test_custom_width_schema_control_sensitivity_and_persistence(self):
         win = self.open_window()
