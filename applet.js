@@ -441,6 +441,15 @@ class Win11AboveTooltip extends TooltipParent {
     }
 }
 
+// Drag-over feedback measured on Windows 11 (see docs/start-drag-feedback.md): the merge target shrinks
+// into the top-left cell of a folder plate while its label fades; an existing folder's plate shrinks.
+const DROP_FEEDBACK = {
+    duration: 180,        // ms: icon, plate and folder shrink (ease-out)
+    labelDuration: 100,   // ms: the target's label fades out/in
+    folderScale: 0.78,    // 38px plate -> ~30px
+    settleDuration: 200   // ms: new folder fade-in / appended folder growing back
+};
+
 /**
  * Draggable tile in the Pinned section (represents either a single App or a Folder of apps)
  */
@@ -522,7 +531,9 @@ class PinnedTile {
         this._signals.connect(this._draggable, 'drag-end', this._onDragEnd.bind(this));
     }
 
-    _buildFolderMiniIcon(appIds) {
+    // Geometry of the 2x2 folder plate, shared by the folder icon and the merge preview so the
+    // shrunken icon lands exactly where a one-app folder would draw it.
+    _folderPreviewMetrics() {
         const metrics = this.applet._getPinnedMetrics();
         const uiScale = (metrics.scale && metrics.logicalScale) ? (metrics.scale / metrics.logicalScale) : 1;
         const previewSize = Math.max(20, Math.min(metrics.iconBox, Math.round(38 * metrics.scale)));
@@ -530,6 +541,11 @@ class PinnedTile {
         const gapCss = Math.max(2, Math.round(3 * metrics.logicalScale));
         const cellStage = Math.max(8, Math.floor((previewSize - (2 * padCss + gapCss) * uiScale) / 2));
         const iconLogical = Math.max(8, Math.floor(cellStage / uiScale));
+        return {metrics, uiScale, previewSize, padCss, gapCss, cellStage, iconLogical};
+    }
+
+    _buildFolderMiniIcon(appIds) {
+        const {previewSize, padCss, gapCss, cellStage, iconLogical} = this._folderPreviewMetrics();
         let box = new St.BoxLayout({
             vertical: true,
             style_class: 'win11-folder-mini-preview',
@@ -565,11 +581,85 @@ class PinnedTile {
         return box;
     }
 
+    // Windows-style drag-over feedback. Called for every tile on every drag end, so a tile that is not
+    // (or already) in the requested state must cost nothing.
     setFolderDropTarget(isTarget) {
-        if (isTarget) {
-            this.actor.add_style_class_name('win11-pinned-tile-folder-target');
-        } else {
-            this.actor.remove_style_class_name('win11-pinned-tile-folder-target');
+        const on = !!isTarget;
+        if (!!this._dropTarget === on)
+            return;
+        this._dropTarget = on;
+        if (!this.actor || !this.iconActor)
+            return;
+        if (this.itemData.type === 'folder')
+            this._animateFolderTarget(on);
+        else
+            this._animateMergeTarget(on);
+    }
+
+    _animateFolderTarget(on) {
+        const scale = on ? DROP_FEEDBACK.folderScale : 1;
+        this.iconActor.set_pivot_point(0.5, 0.5);
+        this.applet._animateActor(this.iconActor, {scale_x: scale, scale_y: scale}, DROP_FEEDBACK.duration);
+    }
+
+    // The target app's icon moves into the first cell of a folder plate (the plate fades in behind it)
+    // and its label fades out, previewing the folder that dropping would create.
+    _ensureDropOverlay() {
+        if (this._dropPlate)
+            return;
+        const m = this._folderPreviewMetrics();
+        const box = m.metrics.iconBox;
+        const wrapper = new St.Widget({layout_manager: new Clutter.BinLayout(), width: box, height: box});
+        const plate = new St.Widget({style_class: 'win11-folder-mini-preview', width: m.previewSize, height: m.previewSize,
+            opacity: 0, reactive: false, x_expand: true, y_expand: true,
+            x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
+        this.iconContainer.set_child(null);
+        Object.assign(this.iconActor, {x_expand: true, y_expand: true,
+            x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
+        wrapper.add_child(plate);
+        wrapper.add_child(this.iconActor);
+        this.iconContainer.set_child(wrapper);
+        this._dropPlate = plate;
+    }
+
+    _mergeIconTransform() {
+        const m = this._folderPreviewMetrics();
+        const box = m.metrics.iconBox;
+        const plateLeft = (box - m.previewSize) / 2;
+        // The plate's 1px CSS border sits outside its padding, so the first cell starts border + padding in.
+        const cellCentre = plateLeft + (1 + m.padCss) * m.uiScale + m.cellStage / 2;
+        const iconSize = this.applet.applicationIconSize || 32;
+        return {scale: m.iconLogical / iconSize, shift: cellCentre - box / 2};
+    }
+
+    _animateMergeTarget(on) {
+        const a = this.applet;
+        this._ensureDropOverlay();
+        const t = on ? this._mergeIconTransform() : {scale: 1, shift: 0};
+        this.iconActor.set_pivot_point(0.5, 0.5);
+        a._animateActor(this._dropPlate, {opacity: on ? 255 : 0}, DROP_FEEDBACK.duration);
+        a._animateActor(this.iconActor, {scale_x: t.scale, scale_y: t.scale,
+            translation_x: t.shift, translation_y: t.shift}, DROP_FEEDBACK.duration);
+        if (this.label)
+            a._animateActor(this.label, {opacity: on ? 0 : 255}, DROP_FEEDBACK.labelDuration);
+    }
+
+    // After a drop the grid is rebuilt: a brand-new folder fades in, an enlarged folder grows back.
+    playDropSettle(kind) {
+        if (!this.actor || !this.iconActor)
+            return;
+        const a = this.applet;
+        if (kind === 'append' && this.itemData.type === 'folder') {
+            this.iconActor.set_pivot_point(0.5, 0.5);
+            this.iconActor.scale_x = this.iconActor.scale_y = DROP_FEEDBACK.folderScale;
+            a._animateActor(this.iconActor, {scale_x: 1, scale_y: 1}, DROP_FEEDBACK.settleDuration);
+        } else if (kind === 'create') {
+            this.iconContainer.opacity = 0;
+            if (this.label)
+                this.label.opacity = 0;
+            a._animateActor(this.iconContainer, {opacity: 255}, DROP_FEEDBACK.settleDuration);
+            if (this.label)
+                a._animateActor(this.label, {opacity: 255}, DROP_FEEDBACK.settleDuration);
         }
     }
 
@@ -3540,6 +3630,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         this._cancelAllAppsMaterialize();
         this._cancelCategoryScroll();
         this._cancelFolderRenameTimers();
+        this._dropFeedbackHold = null;
         this._handlePinnedGridDragOut();
         this._stopDndTracking();
         // A closed menu cancels the drop, not the pending registry cleanup.
@@ -4239,8 +4330,10 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             this._deferredPinnedRefresh = true;
             return;
         }
-        if (!this.pinnedGridActor)
+        if (!this.pinnedGridActor) {
+            this._dropSettle = null;
             return;
+        }
 
         this.pinnedTitleLabel.set_text(this.t("pinned"));
         if (this.pinnedExpanded) {
@@ -4274,7 +4367,10 @@ class Win11MenuApplet extends Applet.TextIconApplet {
                 tile.actor.set_position(from.x, from.y);
                 this._animateActor(tile.actor, { x: tile.currentX, y: tile.currentY }, 150);
             }
+            if (this._dropSettle && items[i].id === this._dropSettle.id && tile.playDropSettle)
+                tile.playDropSettle(this._dropSettle.kind);
         }
+        this._dropSettle = null;
     }
 
     _startDndTracking(source) {
@@ -4330,7 +4426,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         if (!success) this._pendingDndCommit = null;
         this._scheduleDndCompletion();
         this._pinnedTiles.forEach(t => {
-            t.setFolderDropTarget(false);
+            this._releaseDropTarget(t);
             if (t.actor)
                 t.actor.opacity = 255;
         });
@@ -4352,11 +4448,19 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         });
     }
 
+    // Clears a tile's drag-over feedback, except for the target of a merge that was just dropped: it keeps
+    // its merged look until the grid is rebuilt, otherwise it would visibly un-merge for a few frames first.
+    _releaseDropTarget(tile) {
+        if (this._dropFeedbackHold && tile.itemData && tile.itemData.id === this._dropFeedbackHold)
+            return;
+        tile.setFolderDropTarget(false);
+    }
+
     _handlePinnedGridDragOut() {
         if (this._pinnedHoverTimer) Mainloop.source_remove(this._pinnedHoverTimer);
         this._pinnedHoverTimer = 0;
         this._pinnedHover = null;
-        this._pinnedTiles.forEach(t => t.setFolderDropTarget(false));
+        this._pinnedTiles.forEach(t => this._releaseDropTarget(t));
         this._externalFolderTargetIndex = -1;
         if (this._dragState) this._dragState.folderTargetIndex = -1;
     }
@@ -4468,7 +4572,13 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             this._handlePinnedGridDragOut();
             if (!commit) this._resetPinnedTilesPositions();
             this._dragState = null;
-            if (commit) commit();
+            try {
+                if (commit) commit();
+            } finally {
+                // The merged look was held through the commit; release whatever the commit did not rebuild.
+                this._dropFeedbackHold = null;
+                this._pinnedTiles.forEach(t => t.setFolderDropTarget(false));
+            }
             if (this._installedAppsRefreshPending) this._onInstalledAppsChanged();
             if (this._deferredFolderRefresh) {
                 this._deferredFolderRefresh = false;
@@ -4501,8 +4611,9 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         const targetId = target ? target.id : null;
         const sourceId = isPinned ? source.itemData.id : isFolderApp ? source.appId : source.app.get_id();
         const folderId = isFolderApp ? source.folderData.id : null;
+        this._dropFeedbackHold = targetId && targetId !== sourceId ? targetId : null;
         this._handlePinnedGridDragOut();
-        return this._queueDndCommit(source, () => {
+        const queued = this._queueDndCommit(source, () => {
             const folder = this.pinnedItems.find(item => item.type === 'folder' &&
                 (folderId ? item.id === folderId : (item.apps || []).includes(sourceId)));
             if (isFolderApp && (!folder || !(folder.apps || []).includes(sourceId))) return;
@@ -4523,6 +4634,11 @@ class Win11MenuApplet extends Applet.TextIconApplet {
                 this._refreshPinnedSection();
             }
         });
+        if (!queued) {
+            this._dropFeedbackHold = null;
+            this._pinnedTiles.forEach(t => t.setFolderDropTarget(false));
+        }
+        return queued;
     }
 
     _mergeAppIntoPinnedTarget(sourceAppId, sourceIndex, targetIndex) {
@@ -4548,6 +4664,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
                 this.pinnedItems.splice(sourceIndex, 1);
             }
             this._savePinnedItems();
+            this._dropSettle = {id: newFolderId, kind: 'create'};
             this._refreshPinnedSection();
         } else if (targetItem.type === 'folder') {
             if (!Array.isArray(targetItem.apps))
@@ -4558,6 +4675,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
                 this.pinnedItems.splice(sourceIndex, 1);
             }
             this._savePinnedItems();
+            this._dropSettle = {id: targetItem.id, kind: 'append'};
             this._refreshPinnedSection();
         }
     }

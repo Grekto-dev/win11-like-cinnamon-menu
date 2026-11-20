@@ -24,6 +24,7 @@ A modern desktop applet for the **Cinnamon Desktop Environment** (Linux Mint and
 - **Pinned Applications (6 / 7 / 8 columns in Small / Medium / Large)**:
   - **Drag and Drop**: Reorder pinned apps with smooth auto-arranging animations.
   - **Folder Creation**: Hold an app over another icon briefly, then drop to create a folder with a 2x2 miniature preview. Quick passes do not create folders accidentally.
+  - **Windows-style drag feedback**: While an app hovers over another app, the target shrinks into the top-left cell of a folder plate and its label fades; over an existing folder, the folder plate shrinks slightly. On drop, the new folder fades in (or the folder grows back). Both follow the animation preference. Measurements are in `docs/start-drag-feedback.md`.
   - **Explicit Opening & Rename**: A new folder stays closed. Click it to open; click its title to rename. Clicking outside confirms the name and closes only the folder.
   - **Folder Overlay Modal**: Open folders in an animated centered card, reorder inside, or drag items onto the desired pinned-grid position. Single-app folders remain open; extracting the last app removes the empty folder.
   - **Cancellable Drag & Drop**: Press Escape to restore the original order without saving a cancelled drag. Preview and compaction animations respect the animation preference.

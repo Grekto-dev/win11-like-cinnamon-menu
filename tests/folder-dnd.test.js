@@ -554,6 +554,49 @@ test('destroy cancels dwell, focus, deferred commits and drag monitors', () => {
     assert.equal(app._pendingDndCommit, null);
 });
 
+test('a merge drop keeps the target feedback on until the grid is rebuilt, so it does not un-merge first', () => {
+    const {app, tile, flush} = harness();
+    const source = tile(0), target = tile(1);
+    app.pinnedItems = [source.itemData, target.itemData];
+    app._onPinnedTileDragBegin(source);
+    app._dragState.folderTargetIndex = 1;
+    target.target = true;
+    let sawRelease = null;
+    app._mergeAppIntoPinnedTarget = () => {sawRelease = target.target;};
+    assert.equal(app._acceptPinnedGridDrop(source, null, 0, 0, 0), true);
+    assert.equal(target.target, true, 'accepting the drop must not start the restore animation');
+    app._onPinnedTileDragEnd(source, true);
+    assert.equal(target.target, true, 'drag-end must not either while the merge is queued');
+    flush();
+    assert.equal(sawRelease, true, 'the commit still sees the target in its merged look');
+    assert.equal(target.target, false, 'after the commit the feedback is released');
+});
+
+test('closing the menu between the drop and its commit releases the held merge target', () => {
+    const {app, tile, Class} = harness();
+    const source = tile(0), target = tile(1);
+    app.pinnedItems = [source.itemData, target.itemData];
+    app._onPinnedTileDragBegin(source);
+    app._dragState.folderTargetIndex = 1;
+    target.target = true;
+    app._acceptPinnedGridDrop(source, null, 0, 0, 0);
+    assert.equal(target.target, true);
+    for (const name of ['_endMenuResize', '_cancelAllAppsMaterialize', '_cancelCategoryScroll', '_cancelFolderRenameTimers'])
+        app[name] = () => {};
+    Class.prototype._cancelTransientInteractions.call(app);
+    assert.equal(target.target, false, 'no merged look is left behind without a commit');
+    assert.equal(app._dropFeedbackHold, null);
+});
+
+test('a cancelled or non-merge drop still clears the target feedback immediately', () => {
+    const {app, tile} = harness();
+    const source = tile(0), target = tile(1);
+    app._onPinnedTileDragBegin(source);
+    target.target = true;
+    app._onPinnedTileDragEnd(source, false);
+    assert.equal(target.target, false);
+});
+
 test('merge target styling reserves its border instead of changing tile geometry', () => {
     const css = fs.readFileSync(require('node:path').join(__dirname, '../stylesheet.css'), 'utf8');
     const normal = css.match(/\.win11-pinned-tile\s*\{([^}]+)\}/)[1];

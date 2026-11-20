@@ -228,12 +228,6 @@
     background-color: rgba(150, 150, 165, 0.16);
 }
 
-.win11-pinned-tile-folder-target {
-    background-color: rgba(150, 150, 165, 0.30);
-    border-color: rgba(255, 255, 255, 0.35);
-    border-radius: 10px;
-}
-
 .win11-pinned-tile-label {
     font-size: 8.5pt;
     text-align: center;
