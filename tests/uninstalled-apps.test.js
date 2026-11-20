@@ -49,7 +49,7 @@ test('right-click on an unavailable root pin offers working Unpin without an app
     assert.deepEqual(plain(app.pinnedItems), []);
 });
 
-test('right-click on an unavailable folder member can remove it while keeping the folder', () => {
+test('right-click on an unavailable folder member can unpin it; a two-app folder then dissolves into the remaining app', () => {
     const {app, context} = harness();
     const folder = {type: 'folder', id: 'f', name: 'Personal', apps: ['kept.desktop', 'removed.desktop']};
     app.pinnedItems = [folder];
@@ -60,7 +60,19 @@ test('right-click on an unavailable folder member can remove it while keeping th
     assert.ok(app.contextItems, 'missing folder members must still offer Unpin');
     assert.deepEqual(Array.from(app.contextItems, x => x.label), ['unpin_from_start']);
     app.contextItems[0].action();
-    assert.deepEqual(plain(app.pinnedItems), [{...folder, apps: ['kept.desktop']}]);
+    assert.deepEqual(plain(app.pinnedItems), [{type: 'app', id: 'kept.desktop'}]);
+});
+
+test('unpinning one member of a three-app folder keeps the folder', () => {
+    const {app, context} = harness();
+    const folder = {type: 'folder', id: 'f', name: 'Personal', apps: ['a.desktop', 'kept.desktop', 'removed.desktop']};
+    app.pinnedItems = [folder];
+    const tile = Object.assign(Object.create(context.FolderAppTile.prototype), {
+        applet: app, folderData: folder, appId: 'removed.desktop', app: null, actor: {}
+    });
+    tile._onButtonRelease(tile.actor, {get_button: () => 3});
+    app.contextItems[0].action();
+    assert.deepEqual(plain(app.pinnedItems), [{...folder, apps: ['a.desktop', 'kept.desktop']}]);
 });
 
 test('installed-app changes prune vanished pins and folder members, preserving order and folder identity', () => {

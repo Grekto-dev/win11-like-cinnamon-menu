@@ -210,16 +210,103 @@ test('closing a folder returns focus before the overlay disappears', () => {
     assert.deepEqual(order, ['focus', 'hide']);
 });
 
-test('extracting one of two apps preserves the open single-app folder', () => {
+test('extracting one of two apps dissolves the folder: the remaining app takes its place and the card closes', () => {
     const {app} = harness();
     app.pinnedItems = [{type: 'folder', id: 'f', apps: ['a', 'b']}, {type: 'app', id: 'c'}];
     app._openFolderId = 'f';
     app._removeAppFromFolder('f', 'a', true, 2);
-    assert.equal(app.pinnedItems[0].type, 'folder');
-    assert.deepEqual(Array.from(app.pinnedItems[0].apps), ['b']);
-    assert.equal(app._openFolderId, 'f');
+    assert.deepEqual(app.pinnedItems.map(i => [i.type, i.id]), [['app', 'b'], ['app', 'c'], ['app', 'a']]);
+    assert.equal(app._openFolderId, null);
+    assert.equal(app.closes, 1);
+    assert.equal(app.saves, 1);
+});
+
+test('extracting one app from a larger folder closes the card and keeps the folder', () => {
+    const {app} = harness();
+    app.pinnedItems = [{type: 'folder', id: 'f', apps: ['a', 'b', 'c']}, {type: 'app', id: 'd'}];
+    app._openFolderId = 'f';
+    app._removeAppFromFolder('f', 'b', true, 2);
+    assert.deepEqual(app.pinnedItems.map(i => i.id), ['f', 'd', 'b']);
+    assert.deepEqual(Array.from(app.pinnedItems[0].apps), ['a', 'c']);
+    assert.equal(app.closes, 1, 'the folder closes right after an app leaves it');
+});
+
+test('a closed folder is not closed again, and its extraction still dissolves a two-app folder', () => {
+    const {app} = harness();
+    app.pinnedItems = [{type: 'folder', id: 'f', apps: ['a', 'b']}];
+    app._removeAppFromFolder('f', 'b', true, 0);
+    assert.deepEqual(app.pinnedItems.map(i => i.id), ['b', 'a']);
     assert.equal(app.closes, 0);
-    assert.deepEqual(app.pinnedItems.map(i => i.id), ['f', 'c', 'a']);
+});
+
+test('the extracted app lands in the chosen slot of the displayed list when the folder dissolves', () => {
+    for (const [slot, expected] of [[0, ['a', 'c', 'b', 'd']], [1, ['c', 'a', 'b', 'd']], [2, ['c', 'b', 'a', 'd']], [4, ['c', 'b', 'd', 'a']]]) {
+        const {app} = harness();
+        app.pinnedItems = [{type: 'app', id: 'c'}, {type: 'folder', id: 'f', apps: ['a', 'b']}, {type: 'app', id: 'd'}];
+        app._removeAppFromFolder('f', 'a', true, slot);
+        assert.deepEqual(app.pinnedItems.map(i => i.id), expected, 'slot ' + slot);
+    }
+});
+
+test('dissolving into an app that is already pinned still honours the chosen slot', () => {
+    const {app} = harness();
+    app.pinnedItems = [{type: 'app', id: 'c'}, {type: 'folder', id: 'f', apps: ['a', 'b']}, {type: 'app', id: 'b'}, {type: 'app', id: 'd'}];
+    app._removeAppFromFolder('f', 'a', true, 3);
+    assert.deepEqual(app.pinnedItems.map(i => i.id), ['c', 'b', 'a', 'd']);
+});
+
+test('dragging an app from the open card onto another folder closes the card, whatever the folder size', () => {
+    for (const apps of [['a', 'b'], ['a', 'b', 'c']]) {
+        const {app, flush, FolderAppTile, actor, context} = harness();
+        app.pinnedItems = [{type: 'folder', id: 'f', apps}, {type: 'folder', id: 'g', apps: ['x', 'y']}];
+        app._openFolderId = 'f';
+        const dragged = Object.assign(new FolderAppTile(), {appId: 'a', folderData: app.pinnedItems[0], actor: actor(), app: {get_id: () => 'a'}});
+        app._dragState = {sourceIndex: -1, previewSlot: 0, folderTargetIndex: 1};
+        context.DND.isDragging = () => false;
+        assert.equal(app._acceptPinnedGridDrop(dragged, null, 0, 0, 0), true);
+        flush();
+        assert.equal(app._openFolderId, null, apps.length + ' apps');
+        assert.ok(app.closes >= 1);
+        const g = app.pinnedItems.find(i => i.id === 'g');
+        assert.deepEqual(Array.from(g.apps), ['x', 'y', 'a']);
+    }
+});
+
+test('the missing-then-repeated extraction path still reports app-not-in-folder on a larger folder', () => {
+    const {app} = harness();
+    app.pinnedItems = [{type: 'folder', id: 'f', apps: ['a', 'b', 'c']}];
+    app._removeAppFromFolder('f', 'a', true, 0);
+    const before = JSON.stringify(app.pinnedItems);
+    assert.equal(app._removeAppFromFolder('f', 'a', true, 0), false);
+    assert.equal(JSON.stringify(app.pinnedItems), before);
+    assert.equal(app.saves, 1);
+});
+
+test('the remaining app is not duplicated when it is already pinned at root', () => {
+    const {app} = harness();
+    app.pinnedItems = [{type: 'folder', id: 'f', apps: ['a', 'b']}, {type: 'app', id: 'b'}];
+    app._removeAppFromFolder('f', 'a', true, 0);
+    assert.deepEqual(app.pinnedItems.map(i => i.id), ['a', 'b']);
+});
+
+test('unpinning or moving one of two folder apps also dissolves the folder without adding the app to root', () => {
+    const {app} = harness();
+    app.pinnedItems = [{type: 'folder', id: 'f', apps: ['a', 'b']}];
+    app._openFolderId = 'f';
+    app._removeAppFromFolder('f', 'a', false, null, false);
+    assert.deepEqual(app.pinnedItems.map(i => [i.type, i.id]), [['app', 'b']]);
+    assert.equal(app.saves, 0, 'persist=false leaves saving to the caller');
+    assert.equal(app.closes, 1);
+});
+
+test('removing an app from a three-app folder without extraction keeps it open and rebuilds', () => {
+    const {app} = harness();
+    app.pinnedItems = [{type: 'folder', id: 'f', apps: ['a', 'b', 'c']}];
+    app._openFolderId = 'f';
+    app._removeAppFromFolder('f', 'a', false);
+    assert.equal(app.closes, 0);
+    assert.equal(app.rebuilds, 1);
+    assert.deepEqual(Array.from(app.pinnedItems[0].apps), ['b', 'c']);
 });
 
 test('merging creates a closed folder without delayed rename or opening', () => {
@@ -305,9 +392,9 @@ test('folder extraction commits selected root slot only after DND completion', (
     assert.deepEqual(app.pinnedItems.map(i => i.id), ['c', 'f']);
     context.DND.isDragging = () => false;
     flush();
-    assert.deepEqual(app.pinnedItems.map(i => i.id), ['a', 'c', 'f']);
-    assert.deepEqual(Array.from(app.pinnedItems[2].apps), ['b']);
-    assert.equal(app._openFolderId, 'f');
+    assert.deepEqual(app.pinnedItems.map(i => [i.type, i.id]), [['app', 'a'], ['app', 'c'], ['app', 'b']],
+        'the folder dissolves and its remaining app takes the folder slot');
+    assert.equal(app._openFolderId, null, 'the card closes after the app left it');
 });
 
 test('dropping an external existing member onto its own folder is a no-op after DND completion', () => {
@@ -336,7 +423,7 @@ test('dropping an external existing member onto another folder still moves it', 
     assert.equal(app._acceptPinnedGridDrop({app: {get_id: () => 'a'}}, null, 0, 0, 0), true);
     flush();
     assert.equal(JSON.stringify(app.pinnedItems), JSON.stringify([
-        {type: 'folder', id: 'f', apps: ['b']},
+        {type: 'app', id: 'b'},
         {type: 'folder', id: 'g', apps: ['c', 'a']}
     ]));
     assert.equal(app.saves, 1);
@@ -349,7 +436,7 @@ test('dropping an external existing member onto a root slot still extracts it', 
     assert.equal(app._acceptPinnedGridDrop({app: {get_id: () => 'a'}}, null, 0, 65, 0), true);
     flush();
     assert.equal(JSON.stringify(app.pinnedItems), JSON.stringify([
-        {type: 'app', id: 'a'}, {type: 'folder', id: 'f', apps: ['b']}
+        {type: 'app', id: 'a'}, {type: 'app', id: 'b'}
     ]));
     assert.equal(app.saves, 1);
 });
@@ -659,7 +746,7 @@ test('missing or repeated extraction cannot insert a phantom or duplicate app', 
     assert.equal(app.saves, 0);
     app._removeAppFromFolder('f', 'a', true, 0);
     app._removeAppFromFolder('f', 'a', true, 0);
-    assert.deepEqual(app.pinnedItems.map(i => i.id), ['a', 'f']);
+    assert.deepEqual(app.pinnedItems.map(i => i.id), ['a', 'b']);
     assert.equal(app.saves, 1);
 });
 

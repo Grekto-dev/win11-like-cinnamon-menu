@@ -159,6 +159,28 @@
     transition-duration: 150ms;
 }
 
+/* Keep the search field's border neutral. The Cinnamon theme paints `border: 1px solid <accent>` on
+   #appmenu-search-entry:hover/:focus, and the win11-frosted-panel extension an accent underline on focus;
+   on a fully rounded field either one shows up as a stray blue arc/outline (see tests/search-entry-border). */
+#appmenu-search-entry.win11-search-entry:hover,
+#appmenu-search-entry.win11-search-entry:focus {
+    border-color: transparent;
+}
+
+/* The extension's rules have one id + three classes (four on the light variant); repeating the field class
+   raises ours above them regardless of stylesheet load order. */
+.win11-frosted-start-menu #appmenu-search-entry.win11-search-entry.win11-search-entry:hover,
+.win11-frosted-start-menu #appmenu-search-entry.win11-search-entry.win11-search-entry:focus {
+    border-color: rgba(255, 255, 255, 0.12);
+    border-bottom-color: rgba(255, 255, 255, 0.12);
+}
+
+.win11-frosted-start-menu.win11-frosted-start-menu-light #appmenu-search-entry.win11-search-entry.win11-search-entry:hover,
+.win11-frosted-start-menu.win11-frosted-start-menu-light #appmenu-search-entry.win11-search-entry.win11-search-entry:focus {
+    border-color: rgba(0, 0, 0, 0.10);
+    border-bottom-color: rgba(0, 0, 0, 0.10);
+}
+
 .win11-search-entry-icon {
     icon-size: 16px;
     padding: 0 4px;

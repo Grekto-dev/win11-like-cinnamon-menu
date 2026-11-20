@@ -3859,13 +3859,28 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         folderData.apps = folderData.apps.filter(id => id !== appId);
         let slot = pinnedSlot === null ? folderIdx + 1 : pinnedSlot;
 
-        // A single app is still a folder. Only the final extraction removes it.
-        if (folderData.apps.length === 0) {
+        // A folder never keeps a single app (Windows 11 behaviour): when only one is left it dissolves and
+        // that app takes the folder's place in the pinned grid. Folders that already hold one app (older
+        // data, created before this rule) stay untouched until their last app leaves.
+        const dissolves = folderData.apps.length === 1;
+        if (dissolves) {
+            const [remaining] = folderData.apps;
+            if (this.pinnedItems.some(item => item.type === 'app' && item.id === remaining)) {
+                // Already pinned elsewhere: just drop the folder, never duplicate the app.
+                this.pinnedItems.splice(folderIdx, 1);
+                if (slot > folderIdx) slot--;
+            } else {
+                this.pinnedItems[folderIdx] = { type: 'app', id: remaining };
+            }
+        } else if (folderData.apps.length === 0) {
             this.pinnedItems.splice(folderIdx, 1);
             if (slot > folderIdx) slot--;
-            if (this._openFolderId === folderId) this._closeFolder();
-        } else if (this._openFolderId === folderId) {
-            this._rebuildFolderGrid(folderData);
+        }
+        if (this._openFolderId === folderId) {
+            // The card closes right after an app leaves the folder (and whenever the folder is gone).
+            const gone = !this.pinnedItems.includes(folderData);
+            if (gone || keepOnPinnedGrid) this._closeFolder();
+            else this._rebuildFolderGrid(folderData);
         }
         if (keepOnPinnedGrid && !this.pinnedItems.some(item => item.type === 'app' && item.id === appId)) {
             slot = Math.max(0, Math.min(this.pinnedItems.length, slot));
@@ -4620,7 +4635,12 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             if (folder && targetId === folder.id) return;
             if (targetId && targetId !== sourceId && (!folder || targetId !== folder.id)) {
                 if (!this.pinnedItems.some(item => item.id === targetId)) return;
-                if (folder) this._removeAppFromFolder(folder.id, sourceId, false, null, false);
+                if (folder) {
+                    this._removeAppFromFolder(folder.id, sourceId, false, null, false);
+                    // Dropping on another tile is taking the app out of the card: it closes (a dissolved
+                    // folder has already closed it).
+                    if (isFolderApp && this._openFolderId === folder.id) this._closeFolder();
+                }
                 const targetIndex = this.pinnedItems.findIndex(item => item.id === targetId);
                 const sourceIndex = this.pinnedItems.findIndex(item => item.type === 'app' && item.id === sourceId);
                 this._mergeAppIntoPinnedTarget(sourceId, sourceIndex, targetIndex);

@@ -2,6 +2,11 @@
 
 Reference: user's local `Gravando 2026-10-17 015019.mp4`, 30.8 s, 930×946, 30 fps. Do not commit the video or extracted frames. This is a behavioral reference, not Microsoft source/assets.
 
+> **Superseded (2026-11-20):** the clip shows a one-app folder staying open. The user has since asked for the
+> Windows 11 behaviour instead: an app taken out of a folder closes the card right after, and a folder left with a
+> single app dissolves (that app takes the folder's place in the grid). Folders that already hold one app from older
+> data are left alone until their last app leaves. See `_removeAppFromFolder` and `tests/folder-dnd.test.js`.
+
 ## Observed sequence
 
 - 0–8 s: drag an app across the pinned grid. Other tiles slide into the prospective insertion slots before release. A floating icon follows the pointer; labels don't duplicate underneath it. Grid order remains row-major.
@@ -20,7 +25,7 @@ Reference: user's local `Gravando 2026-10-17 015019.mp4`, 30.8 s, 930×946, 30 f
 3. Folder opens/closes with a short scale/opacity transition (tunable approximation from video, not claimed exact easing measurements). Respect `enable-animation`; disabled animations settle immediately.
 4. Folder is centered, backdrop fills the menu, outside click (including when renaming) closes only the folder; Escape first dismisses the folder/rename, then menu as appropriate.
 5. Folder reordering previews and commits the same sequence. Cancel restores the original layout and persists no change.
-6. Drag a folder item onto any unobscured root-grid slot: preview insertion/merge, preserve drag source until DND completion, commit app extraction once, keep card and one-item folder open. Remove empty folder and close card only when the final app leaves. No app loss or duplication.
+6. Drag a folder item onto any unobscured root-grid slot: preview insertion/merge, preserve drag source until DND completion, commit app extraction once, (superseded: the card now closes after the drop and a folder left with one app dissolves). Remove empty folder and close card only when the final app leaves. No app loss or duplication.
 7. Retain current app/theme/spacing preferences and all existing pinned data. Back up config before live tests, restore it afterwards.
 8. Destroy/reload/close cancels timers and transient animations/monitors. No dead actors, leaked grabs, ghost icons, or launches after a drag.
 9. Automated behavior tests plus live synthetic mouse drags, readback of persisted lists, and visual/actor confirmation on the final reloaded code. Test animation enabled and disabled paths.
