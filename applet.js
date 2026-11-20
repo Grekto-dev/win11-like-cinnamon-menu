@@ -972,6 +972,8 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         medium: {width: 738, height: 796, gridWidth: 666, cols: 7},
         large: {width: 834, height: 866, gridWidth: 762, cols: 8}
     };
+    // Frame budget (ms) for building search result rows in one main-loop slice (a 60 Hz frame is ~16.7 ms).
+    static FILE_ROW_SLICE_MS = 8;
     static MENU_REF = {screenW: 1920, screenH: 1080, compactScreenH: 885, subFhdH: 768, gap: 12,
         icon: 32, box: 42, cellH: 82, folderCellW: 82, folderCellH: 86, mergeBottom: 48};
 
@@ -2325,17 +2327,22 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             const dir = GLib.build_filenamev([GLib.get_user_cache_dir(), "win11-menu"]);
             GLib.mkdir_with_parents(dir, 0o755);
             const path = GLib.build_filenamev([dir, `live-size-${this.instance_id}.json`]);
-            const payload = JSON.stringify({
+            const state = {
                 width: geo.width,
                 height: geo.height,
                 minWidth: bounds.minWidth,
                 maxWidth: bounds.maxWidth,
                 minHeight: bounds.minHeight,
                 maxHeight: bounds.maxHeight,
-                syncValues: Boolean(syncValues),
-                timestamp: Date.now()
-            });
-            GLib.file_set_contents(path, payload);
+                syncValues: Boolean(syncValues)
+            };
+            // Opening the menu re-syncs the geometry every time; a synchronous disk write for an unchanged
+            // size cost ~14 ms of the open path. Explicit syncs are always delivered.
+            const key = JSON.stringify(state);
+            if (!state.syncValues && key === this._liveSizeKey)
+                return;
+            GLib.file_set_contents(path, JSON.stringify(Object.assign({}, state, {timestamp: Date.now()})));
+            this._liveSizeKey = key;   // only after a successful write, so a failed one is retried
         } catch (e) {
             // Non-fatal in restricted or headless test environments
         }
@@ -3298,12 +3305,15 @@ class Win11MenuApplet extends Applet.TextIconApplet {
         }
     }
 
-    _attachAboveTooltip(actor, text, checkLabel = null, extras = []) {
+    // A Tooltip is an St.Label parked in uiGroup plus a Gio.Settings and ~8 signal connections, and a menu holds
+    // hundreds of rows. Rows therefore build theirs on the first pointer entry (`lazy`), replaying that very
+    // enter event so the first hover behaves exactly as before. Footer buttons (a handful) stay eager.
+    _attachAboveTooltip(actor, text, checkLabel = null, extras = [], lazy = false) {
         if (!actor || !text)
             return null;
         if (!this._activeTooltips)
             this._activeTooltips = new Set();
-        try {
+        const create = () => {
             const tip = new Win11AboveTooltip(actor, text, checkLabel, extras);
             actor._win11Tooltip = tip;
             this._activeTooltips.add(tip);
@@ -3312,6 +3322,32 @@ class Win11MenuApplet extends Applet.TextIconApplet {
                     this._activeTooltips.delete(tip);
             });
             return tip;
+        };
+        try {
+            if (!lazy)
+                return create();
+            const state = {tip: null, enterId: 0};
+            state.enterId = actor.connect('enter-event', (a, event) => {
+                actor.disconnect(state.enterId);
+                state.enterId = 0;
+                if (this._destroying || state.tip)
+                    return Clutter.EVENT_PROPAGATE;
+                try {
+                    state.tip = create();
+                    state.tip._onEnterEvent(a, event);
+                } catch (e) {}
+                return Clutter.EVENT_PROPAGATE;
+            });
+            return {
+                hide() { if (state.tip) state.tip.hide(); },
+                destroy() {
+                    if (state.enterId) {
+                        try { actor.disconnect(state.enterId); } catch (e) {}
+                        state.enterId = 0;
+                    }
+                    if (state.tip) state.tip.destroy();
+                },
+            };
         } catch (e) {
             return null;
         }
@@ -3328,7 +3364,7 @@ class Win11MenuApplet extends Applet.TextIconApplet {
     }
 
     _attachEllipsisTooltip(actor, text, checkLabel, extras = []) {
-        return this._attachAboveTooltip(actor, text, checkLabel, extras);
+        return this._attachAboveTooltip(actor, text, checkLabel, extras, true);
     }
 
     _hideAllTooltips() {
@@ -4457,9 +4493,14 @@ class Win11MenuApplet extends Applet.TextIconApplet {
             const metrics = this._getPinnedMetrics();
             t.currentX = (t.index % metrics.cols) * metrics.cellW;
             t.currentY = Math.floor(t.index / metrics.cols) * metrics.cellH;
-            if (t.actor) {
+            if (!t.actor)
+                return;
+            // Called on every mode switch: only displaced tiles need a new transition. A tile that is already
+            // home may still have a just-queued displacement (no frame yet, so x/y are unchanged): cancel it.
+            if (t.actor.x !== t.currentX || t.actor.y !== t.currentY)
                 this._animateActor(t.actor, { x: t.currentX, y: t.currentY }, 150);
-            }
+            else
+                t.actor.remove_all_transitions();
         });
     }
 
@@ -6167,19 +6208,27 @@ class Win11MenuApplet extends Applet.TextIconApplet {
     _renderFileSearchBatch() {
         this._fileSearchRenderId = 0;
         if (this._destroying || this._fileSearchId !== this._searchGeneration || !this.menu.isOpen) return;
-        const batch = this._fileResultsQueue.splice(0, 8);
-        if (batch.length) {
-            this._hideEmptySearchLabel();
-            if (!this._streamedFileHeader) {
-                this._streamedFileHeader = new St.Label({text: this.t('files_header'), style_class: 'win11-search-category-label'});
-                this.searchResultsListBox.add_actor(this._streamedFileHeader);
+        // A row costs ~5 ms; eight in one idle callback blocked the shell for ~40 ms (2-3 dropped frames).
+        // Build rows until the slice has used FILE_ROW_SLICE_MS (always at least one), then yield.
+        const now = () => (typeof GLib !== 'undefined' && GLib.get_monotonic_time) ? GLib.get_monotonic_time() / 1000 : 0;
+        const started = now();
+        let built = 0;
+        while (this._fileResultsQueue.length && built < 8) {
+            if (built > 0 && now() - started >= Win11MenuApplet.FILE_ROW_SLICE_MS)
+                break;
+            const item = this._fileResultsQueue.shift();
+            if (built === 0) {
+                this._hideEmptySearchLabel();
+                if (!this._streamedFileHeader) {
+                    this._streamedFileHeader = new St.Label({text: this.t('files_header'), style_class: 'win11-search-category-label'});
+                    this.searchResultsListBox.add_actor(this._streamedFileHeader);
+                }
             }
-            for (const item of batch) {
-                this._addSearchResultRow(item);
-                this._fileResultCount++;
-            }
-            if (this._selectedSearchResultIdx === -1) this._selectSearchResult(0);
+            this._addSearchResultRow(item);
+            this._fileResultCount++;
+            built++;
         }
+        if (built && this._selectedSearchResultIdx === -1) this._selectSearchResult(0);
         if (this._fileResultsQueue.length) {
             this._fileSearchRenderId = Mainloop.idle_add(() => {
                 this._renderFileSearchBatch();
